@@ -1,4 +1,4 @@
-if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and $PSVersionTable.PSEdition -eq "Core")
+if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and $PSVersionTable.PSEdition -eq "Core") {
     try {
         $HelperFunctions = Get-ChildItem -Path $(Join-Path $PSScriptRoot "Helpers") -File -ErrorAction Stop
         foreach ($FileItem in $HelperFunctions) {
@@ -7,6 +7,7 @@ if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and
         $ModuleDependenciesMap = InvokeModuleDependencies
     }
     catch {
+        Write-Error $_
         $ErrMsg = "The Get-LocalGroupAndUsers function requires a Helper functions folder containing all functions located here: " +
         "https://github.com/pldmgg/CrossPlatformPowerShell/tree/master/Helpers" +
         "`nPlease make sure the Helpers folder is in the same directory as the Get-LocalGroupAndUsers function. Halting!"
@@ -109,8 +110,8 @@ function Get-LocalGroupAndUsers {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU+3+5GxY6zSwnyzbG1DbV90MG
-# Onygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUVZkG/a6iSm/EZYmbitD9HZdR
+# 2L2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -167,11 +168,11 @@ function Get-LocalGroupAndUsers {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLCu6N0l0asQmlme
-# a1pIsAqzMpDsMA0GCSqGSIb3DQEBAQUABIIBAAom6MZ4a1L/ktpejfc8/buLvj8d
-# idWReBDyl6g62nmcy3tvdBZqjPim9qeYJCSmulYFbwFpZVFE975ugvMg/4ILWSLz
-# E6uTZv0Cd/rCeS3FO6B8YR5l7xAFVrygARRZbT+PmGSkB4Bv21/bCPKlWblDeY8u
-# i4ijHAJC4r34K+dkzmOhyAsxzqyu4i2qOd3ek6Ft4QOrFSsBQDlS8xQWYzVYu8ww
-# TMn6PPNLgyErX3HBrJRVUg2d6HAkPpqK3PdoM+swjUcPygphSPzEklEsvVYkLWY+
-# PN20vTkXrzAaCeS7qrk90Y9mCurf2pEGQMUe4vs+qaIhcFV+E1wwPi7FpRI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLGQBPA0rl0C/gRs
+# 9t8Rqqmb0TBaMA0GCSqGSIb3DQEBAQUABIIBAERPT6Y3OY+Qth1Yk4PKp2KxbCng
+# G+0ZiAlpMijlI9ARqbqyYDg9vQMPUbfR6dQiMzlXd2CwVfoXAyLuGVlN+e3w2xjZ
+# kVSwc9IloY93SbCKCjzzzbW0NkX25tzkVbkVfI4T/zDdS/c300L/fmo6mPxjAtCx
+# jQFWg9r3mv+A65ewhv0MyTlCbgBq7RZe/2ez1mpHinnqmV7n9btJnVEdDtvXUAy4
+# AW5RCOs4D3k6kf0ILHgo8Gg9B9IqzgUuckhq7G7p/GOAUUJgHAXmkLJpur6mjRn1
+# RoQxlLPUnofSnvHNbMaN8aaPSE4Wg1czSDQEK2rj088JcvSmfN/gk7X34QA=
 # SIG # End signature block
