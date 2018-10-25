@@ -781,8 +781,8 @@ function New-SSHKey {
         
         $ExpectScript = $ExpectScriptPrep -join "`n"
 
-        Write-Host "`$ExpectScript is:`n$ExpectScript"
-        $ExpectScript | Export-CliXml "$HOME/ExpectScriptA.xml"
+        #Write-Host "`$ExpectScript is:`n$ExpectScript"
+        #$ExpectScript | Export-CliXml "$HOME/ExpectScriptA.xml"
         
         # The below $ExpectOutput is an array of strings
         $ExpectOutput = bash -c "$ExpectScript"
@@ -912,8 +912,8 @@ function New-SSHKey {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUwk5/A+iTfDCkIc7N9hhvRUvQ
-# aB+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUaMr0H+D0yzNKBN4q3CEv+l6Z
+# 2t+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -970,11 +970,11 @@ function New-SSHKey {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHAw4ga4ggaavyz6
-# /nDcwX+MQvVGMA0GCSqGSIb3DQEBAQUABIIBADBKM5L3ULezpvytSjfHesP+TgGo
-# qgfdZfUQVP94yzAmD5wS1gOpT/t9S9GZSV+bWrN5HkAO99tvh79/cz/v9AmrfpmU
-# cBNJRR4hi7771R/WWtDaTGCBAzoekO08DCmcSOz6STdluTWIepi1HxsI4030E24S
-# FQQyORqxD6Xr4BDCEfJPCH9FjOxa+dkrH+l75guR/npKzaIUSGiMiEP7sNT49W3M
-# YaiEogIF9XO86EzcHpqOu+vyXdeNIV+SNaAmzK4T/D8BERgIdoAekL9RXLgVErSn
-# W9lIhgXo3lstTIKTckDJpzD+57EuPy7jl0AJYbMeucspfjCe/L05dttyicc=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOlDIU5PuQt/K4an
+# I4FKVJcTOfr0MA0GCSqGSIb3DQEBAQUABIIBAJsesWhJwKFwfAX+LR5uRGfLxApk
+# 6DMD6P7ds4CU5OwjieWZZ5zs08rvedVwsMRVXGrZ8lxmyxQhVzwf7EvJgOnUWQah
+# RX+Z34mrI2/AJm1bp/OPH1t0nTGoN2mRsG+v04gCVdqLFf/Eqc2i0r9ty2zoVVq5
+# Zx+4ReW0H/6BW0AVXtIpebGgTKg7Hj4YNDm7lGlo6VSaQEfpwqFbrxeOECZwy6at
+# tb5cw3HaszFQblWeyASTtN5ig4VGTQSRbFzscK5ZYXpBxek42CQFQy8RG10TIuxQ
+# ocW7jmowg9VSb0ueiDlSOufZzBN4ua83gnqcWCXqrEaNJjiGg5QB/y/NjJY=
 # SIG # End signature block

@@ -33,6 +33,176 @@ function Test-LDAP {
         }
     }
 
+    function Resolve-Host {
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory=$True)]
+            [string]$HostNameOrIP
+        )
+    
+        #region >> Helper Functions
+    
+        function Test-IsValidIPAddress([string]$IPAddress) {
+            [boolean]$Octets = (($IPAddress.Split(".") | Measure-Object).Count -eq 4) 
+            [boolean]$Valid  =  ($IPAddress -as [ipaddress]) -as [boolean]
+            Return  ($Valid -and $Octets)
+        }
+    
+        #endregion >> Helper Functions
+    
+        #region >> Main
+    
+        $RemoteHostNetworkInfoArray = @()
+        if (!$(Test-IsValidIPAddress -IPAddress $HostNameOrIP)) {
+            try {
+                $HostNamePrep = $HostNameOrIP
+                [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                $IPv4AddressFamily = "InterNetwork"
+                $IPv6AddressFamily = "InterNetworkV6"
+    
+                $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostNamePrep)
+                $ResolutionInfo.AddressList | Where-Object {
+                    $_.AddressFamily -eq $IPv4AddressFamily
+                } | foreach {
+                    if ($RemoteHostArrayOfIPAddresses -notcontains $_.IPAddressToString) {
+                        $null = $RemoteHostArrayOfIPAddresses.Add($_.IPAddressToString)
+                    }
+                }
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostNameOrIP when treated as a Host Name (as opposed to IP Address)!"
+    
+                if ($HostNameOrIP -match "\.") {
+                    try {
+                        $HostNamePrep = $($HostNameOrIP -split "\.")[0]
+                        Write-Verbose "Trying to resolve $HostNameOrIP using only HostName: $HostNamePrep!"
+    
+                        [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                        $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostNamePrep)
+                        $ResolutionInfo.AddressList | Where-Object {
+                            $_.AddressFamily -eq $IPv4AddressFamily
+                        } | foreach {
+                            if ($RemoteHostArrayOfIPAddresses -notcontains $_.IPAddressToString) {
+                                $null = $RemoteHostArrayOfIPAddresses.Add($_.IPAddressToString)
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Verbose "Unable to resolve $HostNamePrep!"
+                    }
+                }
+            }
+        }
+        if (Test-IsValidIPAddress -IPAddress $HostNameOrIP) {
+            try {
+                $HostIPPrep = $HostNameOrIP
+                [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                $null = $RemoteHostArrayOfIPAddresses.Add($HostIPPrep)
+    
+                $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostIPPrep)
+    
+                [System.Collections.ArrayList]$RemoteHostFQDNs = @() 
+                $null = $RemoteHostFQDNs.Add($ResolutionInfo.HostName)
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostNameOrIP when treated as an IP Address (as opposed to Host Name)!"
+            }
+        }
+    
+        if ($RemoteHostArrayOfIPAddresses.Count -eq 0) {
+            Write-Error "Unable to determine IP Address of $HostNameOrIP! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        # At this point, we have $RemoteHostArrayOfIPAddresses...
+        [System.Collections.ArrayList]$RemoteHostFQDNs = @()
+        foreach ($HostIP in $RemoteHostArrayOfIPAddresses) {
+            try {
+                $FQDNPrep = [System.Net.Dns]::GetHostEntry($HostIP).HostName
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostIP. No PTR Record? Please check your DNS config."
+                continue
+            }
+            if ($RemoteHostFQDNs -notcontains $FQDNPrep) {
+                $null = $RemoteHostFQDNs.Add($FQDNPrep)
+            }
+        }
+    
+        if ($RemoteHostFQDNs.Count -eq 0) {
+            $null = $RemoteHostFQDNs.Add($ResolutionInfo.HostName)
+        }
+    
+        [System.Collections.ArrayList]$HostNameList = @()
+        [System.Collections.ArrayList]$DomainList = @()
+        foreach ($fqdn in $RemoteHostFQDNs) {
+            $PeriodCheck = $($fqdn | Select-String -Pattern "\.").Matches.Success
+            if ($PeriodCheck) {
+                $HostName = $($fqdn -split "\.")[0]
+                $Domain = $($fqdn -split "\.")[1..$($($fqdn -split "\.").Count-1)] -join '.'
+            }
+            else {
+                $HostName = $fqdn
+                $Domain = "Unknown"
+            }
+    
+            $null = $HostNameList.Add($HostName)
+            $null = $DomainList.Add($Domain)
+        }
+    
+        if ($RemoteHostFQDNs[0] -eq $null -and $HostNameList[0] -eq $null -and $DomainList -eq "Unknown" -and $RemoteHostArrayOfIPAddresses) {
+            [System.Collections.ArrayList]$SuccessfullyPingedIPs = @()
+            # Test to see if we can reach the IP Addresses
+            foreach ($ip in $RemoteHostArrayOfIPAddresses) {
+                try {
+                    $null = [System.Net.NetworkInformation.Ping]::new().Send($ip,1000)
+                    $null = $SuccessfullyPingedIPs.Add($ip)
+                }
+                catch {
+                    Write-Verbose "Unable to ping $ip..."
+                    continue
+                }
+            }
+        }
+    
+        $FQDNPrep = if ($RemoteHostFQDNs) {$RemoteHostFQDNs[0]} else {$null}
+        if ($FQDNPrep -match ',') {
+            $FQDN = $($FQDNPrep -split ',')[0]
+        }
+        else {
+            $FQDN = $FQDNPrep
+        }
+    
+        $DomainPrep = if ($DomainList) {$DomainList[0]} else {$null}
+        if ($DomainPrep -match ',') {
+            $Domain = $($DomainPrep -split ',')[0]
+        }
+        else {
+            $Domain = $DomainPrep
+        }
+    
+        $IPAddressList = [System.Collections.ArrayList]@($(if ($SuccessfullyPingedIPs) {$SuccessfullyPingedIPs} else {$RemoteHostArrayOfIPAddresses}))
+        $HName = if ($HostNameList) {$HostNameList[0].ToLowerInvariant()} else {$null}
+    
+        if ($SuccessfullyPingedIPs.Count -eq 0 -and !$FQDN -and !$HostName -and !$Domain) {
+            Write-Error "Unable to resolve $HostNameOrIP! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        [pscustomobject]@{
+            IPAddressList   = $IPAddressList
+            PingSuccess     = $($SuccessfullyPingedIPs.Count -gt 0)
+            FQDN            = $FQDN
+            HostName        = $HName
+            Domain          = $Domain
+        }
+    
+        #endregion >> Main
+    
+    }
+    
     function Download-NuGetPackage {
         [CmdletBinding()]
         Param(
@@ -401,7 +571,7 @@ function Test-LDAP {
         $ADServerNetworkInfo = Resolve-Host -HostNameOrIP $ADServerHostNameOrIP -ErrorAction Stop
     }
     catch {
-        Write-Error "Unable to resolve $HostName! Halting!"
+        Write-Error "Unable to resolve $ADServerHostNameOrIP! Halting!"
         $global:FunctionResult = "1"
         return
     }
@@ -555,8 +725,8 @@ function Test-LDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUZo0K4Fim92V/NCvDtpbzVO9K
-# 7kigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUljgn3lpLgvvHrkZd6YUhhJO+
+# tQWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -613,11 +783,11 @@ function Test-LDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKSib/5SRTD7h0aD
-# pSkYEDsIvehUMA0GCSqGSIb3DQEBAQUABIIBABR+cViAnSN3RKqYQsakYNsU3SYp
-# pIs3VNV/HLwdzBnoWaE8jEhvKBQr14jqbaagUmxwmD1rDmQRfX0EdaMurVg8aeEU
-# eu6RW9k8lzd4zEPoFcA2H/kfR1l53gm3ucfFu5hW81Vu04hTWM5zlKbSNT3SLsTk
-# kZ2eqmgKCmcSeVMdaFX38bEaLgDIxBWGb4Rpt7m5DPtZWg+y2ZzZvtpp3LoTwUER
-# RGx1Kjo5iVPaLD2RG5OUnUwJaeuRd0PjmKjuJDzIjZgRw2sZd+Xls0BIr6QcRJFj
-# DumNlKnW3CvjMTIhNRRBw/wLqWQATRwBvrU10CYKRMhHuhZpldwpfu4jTxo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDRYCyjU0wD+QBFE
+# jOpn4z6KHVIUMA0GCSqGSIb3DQEBAQUABIIBAIx4ul2NcJgNDdFyGR7CsIxmIHKn
+# j0TZPP8WBtyQrFd8UIH/zOzLFahJ5N/0KkICBSpRddKDAB6YlfEmBUTO/XQmGd8R
+# XYYMlpxaXSBmC3IObbYUTBZB3Vp1FNPRaV2I58aHKgt8dEPhBfyg9EnTTUkAtwnU
+# OtYIjF8mAs4vP4pxYTc9HMSMMhVCeV454oQnNtnAxhUYb284yo3zhHZCmydwpNaW
+# Dy5+dAd9Hhp8m4htbCy213KpEc7GZO7abYOAHZFdxYt+D3FcFGw1BbzIeE9t2lH7
+# BSGsV3VNmPUBp6lXyxzjKeMTPdZY+ZICAr0Q3avlD/SF/7GguY+ilF0h6Xk=
 # SIG # End signature block
