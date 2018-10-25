@@ -1,122 +1,34 @@
-<#
-    .SYNOPSIS
-        Fixes problems found by Meta.Tests.ps1
-#>
-
-$errorActionPreference = 'Stop'
-Set-StrictMode -Version 'Latest'
-
-$TestHelpersModulePath = "$PSScriptRoot\TestHelpers.psm1"
-Import-Module -Name $TestHelpersModulePath
-
-<#
-    .SYNOPSIS
-        Converts the given file to UTF8 encoding.
-
-    .PARAMETER FileInfo
-        The file to convert.
-#>
-function ConvertTo-UTF8
-{
+function NewUniqueString {
     [CmdletBinding()]
-    param
-    (
-        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [System.IO.FileInfo]
-        $FileInfo
+    Param(
+        [Parameter(Mandatory=$False)]
+        [string[]]$ArrayOfStrings,
+
+        [Parameter(Mandatory=$True)]
+        [string]$PossibleNewUniqueString
     )
 
-    $fileContent = Get-Content -Path $FileInfo.FullName -Encoding 'Unicode' -Raw
-    [System.IO.File]::WriteAllText($FileInfo.FullName, $fileContent, [System.Text.Encoding]::UTF8)
-}
+    if (!$ArrayOfStrings -or $ArrayOfStrings.Count -eq 0 -or ![bool]$($ArrayOfStrings -match "[\w]")) {
+        $PossibleNewUniqueString
+    }
+    else {
+        $OriginalString = $PossibleNewUniqueString
+        $Iteration = 1
+        while ($ArrayOfStrings -contains $PossibleNewUniqueString) {
+            $AppendedValue = "_$Iteration"
+            $PossibleNewUniqueString = $OriginalString + $AppendedValue
+            $Iteration++
+        }
 
-<#
-    .SYNOPSIS
-        Converts the given file to ASCII encoding.
-
-    .PARAMETER FileInfo
-        The file to convert.
-#>
-function ConvertTo-ASCII
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [System.IO.FileInfo]
-        $FileInfo
-    )
-
-    $fileContent = Get-Content -Path $FileInfo.FullName -Encoding 'Unicode' -Raw
-    [System.IO.File]::WriteAllText($FileInfo.FullName, $fileContent, [System.Text.Encoding]::ASCII)
-}
-
-function Convert-TabsToSpaceIndentation
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [System.IO.FileInfo]
-        $FileInfo
-    )
-
-    $fileContent = Get-Content -Path $FileInfo.FullName -Encoding 'Unicode' -Raw
-    $newFileContent = $fileContent.Replace("`t", '    ')
-    [System.IO.File]::WriteAllText($FileInfo.FullName, $newFileContent)
-}
-
-function Get-UnicodeFilesList
-{
-    [OutputType([System.IO.FileInfo[]])]
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory = $true)]
-        [String]
-        $Root
-    )
-
-    return Get-TextFilesList -Root $Root | Where-Object { Test-FileInUnicode $_ }
-}
-
-function Add-NewLineAtEndOfFile
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [System.IO.FileInfo]
-        $FileInfo
-    )
-
-    $fileContent = Get-Content -Path $FileInfo.FullName -Raw
-    $fileContent += "`r`n"
-    [System.IO.File]::WriteAllText($FileInfo.FullName, $fileContent)
-}
-
-function Test-FileInUnicode {
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [System.IO.FileInfo]$fileInfo
-    )
-
-    process {
-        $path = $fileInfo.FullName
-        $bytes = [System.IO.File]::ReadAllBytes($path)
-        $zeroBytes = @($bytes -eq 0)
-        return [bool]$zeroBytes.Length
-
+        $PossibleNewUniqueString
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUfipSOtyT4ZnCy85CfYYhdO/l
-# XA6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUHvzU0BS5wRqJMvA/U8Exx1pZ
+# 1yOgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -173,11 +85,11 @@ function Test-FileInUnicode {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJRRl9+mKsNpdLLP
-# C7B7X0lcdWGiMA0GCSqGSIb3DQEBAQUABIIBAHdbw+iAWK5pqBhMC+ZpHYVfm/LH
-# roC3/2oBnhlJEk4LFO4na/xxjSqZgFw5LbkRyDJKa72QLwSY59dIjseFMFmy5ofv
-# yug0Fq/9wOtFbgM15bgB1v8UEF1xHCoSGKu8YHzFGlr58tO/nBpSNOOI7cjenls8
-# 7zMDzFNaFVkDBEJ/hwU6aLsC8J42GwWm3mtzi59c53md81k8ZIB+4ZXopDVmMQEu
-# G/pqPXO2nxvwAh4nUDGXjnMiNvmnX8Ps6SOqN1UdWvOBC5aXiI7xd2HLyyyPHrMW
-# gtpyVkhhEbXhobTn1QG4IbLbzMKcePF5JLqlII/ga6act1JWIfj+Yq8sDMQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHMnywp7X3TUt9g1
+# T+lyVTmzc2iUMA0GCSqGSIb3DQEBAQUABIIBAEtlSCtqd/fhiHW62xifYnhUulT4
+# XRHbnvigZuhZUqTxv8/YfOsfJJ5Yura4IHLxaV0DS2ifjdSSCj/QyBbLQzyxGouI
+# ZzzzbTTdxa0YS2FfeLpvKjQkMUmQu1JkP2w/VY4AXxBjJpYmbOUXgnTd0jCLOkTJ
+# aHq8/13YxkcfhEKFADSrtgRErPrgfscb+gJFhpLKcN2VjPDZF5mFrQFYjmKKDZY0
+# KPVu0i0ZgKamFGHpvO9eB5Mj9BFRDd7JsVEeracbkW3Ui050jqeiZL6pSZF2Qb9E
+# 9L3fPyvqDCIpMzjKteu2P1G4zQTbWbDuMH4wUjr8h/uJ4l99X+0HCpFbdpg=
 # SIG # End signature block

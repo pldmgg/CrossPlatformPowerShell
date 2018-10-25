@@ -1,60 +1,64 @@
-<#
-    .SYNOPSIS
-        Bootstrap PSDepend
+function TestPort {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$False)]
+        $HostName = $env:COMPUTERNAME,
 
-    .DESCRIPTION
-        Bootstrap PSDepend
+        [Parameter(Mandatory=$False)]
+        [int]$Port = $(Read-Host -Prompt "Please enter the port number you would like to check.")
+    )
 
-        Why? No reliance on PowerShellGallery
+    Begin {
 
-            * Downloads nuget to your ~\ home directory
-            * Creates $Path (and full path to it)
-            * Downloads module to $Path\PSDepend
-            * Moves nuget.exe to $Path\PSDepend (skips nuget bootstrap on initial PSDepend import)
-
-    .PARAMETER Path
-        Module path to install PSDepend
-
-        Defaults to Profile\Documents\WindowsPowerShell\Modules
-
-    .EXAMPLE
-        .\Install-PSDepend.ps1 -Path C:\Modules
-
-        # Installs to C:\Modules\PSDepend
-#>
-[cmdletbinding()]
-param(
-    [string]$Path = $( Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
-)
-$ExistingProgressPreference = "$ProgressPreference"
-$ProgressPreference = 'SilentlyContinue'
-try {
-    # Bootstrap nuget if we don't have it
-    if(-not ($NugetPath = (Get-Command 'nuget.exe' -ErrorAction SilentlyContinue).Path)) {
-        $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
-        if(-not (Test-Path $NugetPath)) {
-            Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+        ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+        
+        try {
+            $HostNameNetworkInfo = ResolveHost -HostNameOrIP $HostName -ErrorAction Stop
         }
+        catch {
+            Write-Error "Unable to resolve $HostName! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+
+        $tcp = New-Object Net.Sockets.TcpClient
+        $RemoteHostFQDN = $HostNameNetworkInfo.FQDN
+        
+        ##### END Variable/Parameter Transforms and PreRun Prep #####
     }
 
-    # Bootstrap PSDepend, re-use nuget.exe for the module
-    if($path) { $null = mkdir $path -Force }
-    $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
-                '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $Path
-    & $NugetPath @NugetParams
-    if (!$(Test-Path "$(Join-Path $Path PSDepend)\nuget.exe")) {
-        Move-Item -Path $NugetPath -Destination "$(Join-Path $Path PSDepend)\nuget.exe" -Force
+    ##### BEGIN Main Body #####
+    Process {
+        if ($pscmdlet.ShouldProcess("$RemoteHostFQDN","Test Connection on $RemoteHostFQDN`:$Port")) {
+            try {
+                $tcp.Connect($RemoteHostFQDN, $Port)
+            }
+            catch {}
+
+            if ($tcp.Connected) {
+                $tcp.Close()
+                $open = $true
+            }
+            else {
+                $open = $false
+            }
+
+            $PortTestResult = [pscustomobject]@{
+                Address = $RemoteHostFQDN
+                Port    = $Port
+                Open    = $open
+            }
+            $PortTestResult
+        }
+        ##### END Main Body #####
     }
-}
-finally {
-    $ProgressPreference = $ExistingProgressPreference
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUzjMbJrM7u2AEHqRtgy0szKTk
-# GJegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcZ2gGFQ7He9TN4JCrKnjht9/
+# +JWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -111,11 +115,11 @@ finally {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPhFOL6/a9IpTfcP
-# XRU2cU/99trhMA0GCSqGSIb3DQEBAQUABIIBAL3G7cC4WnDUnXAyu3Vp4BjXEaAm
-# zRO8/DYSqyNMiD0GxO53Wmk5wjEZr0Vrntqf2PANyT2dm4Fs0Kte6SjYFE7M2gtW
-# kdqMZ+3iGu0P+2CkVLRtoj3s1ljGM8NbwZ0f/9uR7y30b0coCFihhx1q8T75v3t+
-# NtDBOfSFydXHPMqvAmWyvgMj30uMVY+Kzyi/8t9aNBrQ5QUaRgFK0LXGVI/c17Bk
-# koXEUx1F5Fts3YDdof3+KTWMhCOs5W5PjyacpBP4Csy3kPrPOWm0st8JiqHdkDtR
-# hrbduZgP/vkpUdMLFOtAVcV8AxBu4gqNd3DNRbiV0DB0ewTTgYiTftQwWUc=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEuobC9z8pkzjDnG
+# xOi+b7srtObuMA0GCSqGSIb3DQEBAQUABIIBAKDIAS7dw5DJr++0IkWo78MYnGom
+# 51wV8/7DiMhn+x05Il77WhGQJX0qCe+sCGDz9imKVKAnoh7IObHPkYlBs1nE1ltG
+# RTKVdA3uosJjGwcTuQxkN+uM2Id5Oz2KtvwB7wqBbg5XAcbz6t/BqcaQ3w4PDGWJ
+# 0EY/17b7jaPZoMJf9mmpEQ2gmxjSZFE1TU2RIyZgr6KpWCx11ZdHce9XQM2tMGX4
+# vgxevysw+9CodBUydL3NxJK9oAAeSFqZkz3HKdkZWLUeLu/ffb1ilVKMb527Z7SI
+# NamJokmS/7K6bXr3LDNmxW4uF/2wVPMQhSqu4SAB0hhsbif2j16ZdHB75bg=
 # SIG # End signature block

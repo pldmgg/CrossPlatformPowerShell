@@ -1,106 +1,88 @@
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory=$False)]
-    [System.Collections.Hashtable]$TestResources
-)
+function GetLocalUserAndGroups {
+    [CmdletBinding()]
+    Param()
 
-# NOTE: `Set-BuildEnvironment -Force -Path $PSScriptRoot` from build.ps1 makes the following $env: available:
-<#
-    $env:BHBuildSystem = "Unknown"
-    $env:BHProjectPath = "U:\powershell\ProjectRepos\Sudo"
-    $env:BHBranchName = "master"
-    $env:BHCommitMessage = "!deploy"
-    $env:BHBuildNumber = 0
-    $env:BHProjectName = "Sudo"
-    $env:BHPSModuleManifest = "U:\powershell\ProjectRepos\Sudo\Sudo\Sudo.psd1"
-    $env:BHModulePath = "U:\powershell\ProjectRepos\Sudo\Sudo"
-    $env:BHBuildOutput = "U:\powershell\ProjectRepos\Sudo\BuildOutput"
-#>
+    if (!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") {
+        $AllLocalUsers = Get-LocalUser
+        $AllLocalGroups = Get-LocalGroup
 
-$manifest = Import-PowerShellDataFile -Path $env:BHPSModuleManifest
-$changelogPath = Join-Path -Path $env:BHProjectPath -Child 'CHANGELOG.md'
-
-Describe 'Module manifest' {
-    Context 'Validation' {
-
-        $script:manifest = $null
-
-        It 'has a valid manifest' {
-            {
-                $script:manifest = Test-ModuleManifest -Path $env:BHPSModuleManifest -Verbose:$false -ErrorAction Stop -WarningAction SilentlyContinue
-            } | Should Not Throw
-        }
-
-        It 'has a valid name in the manifest' {
-            $script:manifest.Name | Should Be $env:BHProjectName
-        }
-
-        It 'has a valid root module' {
-            $script:manifest.RootModule | Should Be "$env:BHProjectName.psm1"
-        }
-
-        It 'has a valid version in the manifest' {
-            $script:manifest.Version -as [Version] | Should Not BeNullOrEmpty
-        }
-
-        It 'has a valid description' {
-            $script:manifest.Description | Should Not BeNullOrEmpty
-        }
-
-        It 'has a valid author' {
-            $script:manifest.Author | Should Not BeNullOrEmpty
-        }
-
-        It 'has a valid guid' {
-            {
-                [guid]::Parse($script:manifest.Guid)
-            } | Should Not throw
-        }
-
-        It 'has a valid copyright' {
-            $script:manifest.CopyRight | Should Not BeNullOrEmpty
-        }
-
-        $script:changelogVersion = $null
-        It 'has a valid version in the changelog' {
-            $script:changelogVersion = $($(Get-Content $changelogpath) | Select-String -Pattern "^##[\s](\d+\.){1,3}\d+").Matches.Value | foreach {
-                $($_ -split "[\s]")[-1]
-            } | Select-Object -Index 0
-            
-            $script:changelogVersion               | Should Not BeNullOrEmpty
-            $script:changelogVersion -as [Version] | Should Not BeNullOrEmpty
-        }
-
-        It 'changelog and manifest versions are the same' {
-            $script:changelogVersion -as [Version] | Should be ( $script:manifest.Version -as [Version] )
-        }
-
-        if (Get-Command git.exe -ErrorAction SilentlyContinue) {
-            $script:tagVersion = $null
-            It 'is tagged with a valid version' -skip {
-                $thisCommit = git.exe log --decorate --oneline HEAD~1..HEAD
-
-                if ($thisCommit -match 'tag:\s*(\d+(?:\.\d+)*)') {
-                    $script:tagVersion = $matches[1]
+        [System.Collections.ArrayList]$AllLocalGroupMembership = @()
+        foreach ($Group in $AllLocalGroups) {
+            $Users = Get-LocalGroupMember $Group | Where-Object {$_.PrincipalSource -eq "Local"} | foreach {
+                if ($_.Name -match '\\') {
+                    $($_.Name -split '\\')[-1]
                 }
-
-                $script:tagVersion               | Should Not BeNullOrEmpty
-                $script:tagVersion -as [Version] | Should Not BeNullOrEmpty
+                else {
+                    $_.Name
+                }
             }
-
-            It 'all versions are the same' {
-                $script:changelogVersion -as [Version] | Should be ( $script:manifest.Version -as [Version] )
-                #$script:manifest.Version -as [Version] | Should be ( $script:tagVersion -as [Version] )
+            if ($Users) {
+                $PSObject = [pscustomobject]@{
+                    Group   = $Group.Name
+                    Users   = [System.Collections.ArrayList]@($Users)
+                }
+                $null = $AllLocalGroupMembership.Add($PSObject)
             }
         }
+
+        [System.Collections.ArrayList]$AllLocalUserGroups = @()
+        foreach ($User in $AllLocalUsers) {
+            $Groups = $($AllLocalGroupMembership | Where-Object {$_.Users -contains $User.Name}).Group
+            if ($Groups) {
+                $PSObject = [pscustomobject]@{
+                    User   = $User
+                    Groups = [System.Collections.ArrayList]@($Groups)
+                }
+                $null = $AllLocalUserGroups.Add($PSObject)
+            }
+        }
+        
+        $AllLocalUserGroups
+    }
+    if ($PSVersionTable.Platform -eq "Unix" -or $PSVersionTable.OS -match "Darwin") {
+        $AllUsers =$(bash -c "getent passwd") | foreach {$($_ -split ':')[0]}
+        $AllGroups = $(bash -c "getent group") | foreach {$($_ -split ':')[0]}
+        [System.Collections.ArrayList]$UserAndGroups = foreach ($User in $AllUsers) {
+            $Groups = $(bash -c "getent group | grep $User") | foreach {$($_ -split ':')[0]}
+            [pscustomobject]@{
+                User    = $User
+                Groups  = [System.Collections.ArrayList]@($Groups)
+            }
+        }
+
+        $HumanUsersPrep = bash -c "awk -F: '`$3 >= 1000 && `$1 != `"nobody`" {print `$1}' /etc/passwd"
+        $HumanUsers = $HumanUsersPrep | Where-Object {$_ -notmatch "nobody"}
+
+        $ActualSudoUsersPrep = foreach ($User in $AllUsers) {
+            bash -c "sudo -l -U $User"
+        }
+        $ActualSudoUsers = $ActualSudoUsersPrep -match "User.*may run .*:" | foreach {$($_ -replace 'User ','' -split ' may')[0]}
+
+        foreach ($User in $ActualSudoUsers) {
+            foreach ($obj in $UserAndGroups) {
+                if ($obj.User -eq $User) {
+                    $null = $obj.Groups.Add("sudousers")
+                }
+            }
+        }
+
+        foreach ($User in $HumanUsers) {
+            foreach ($obj in $UserAndGroups) {
+                if ($obj.User -eq $User) {
+                    $null = $obj.Groups.Add("humanusers")
+                }
+            }
+        }
+
+        $UserAndGroups
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU8LeQiYyaS9FSgMrgMezL+FXd
-# i8agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUrcFnpjyDX48yHLt9kDCEMR3h
+# qOagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -157,11 +139,11 @@ Describe 'Module manifest' {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHyd/EwGeDbTLGWp
-# afXDx04BRyz8MA0GCSqGSIb3DQEBAQUABIIBAJ6LwJf2xM8L1PwutJWq4/fShyvb
-# 1/7ZkMbzxa8q8Ia1nJx4+z9I91hqHQkBT7s3jlituCR1iQZvg6lSHcoq1nCZr4+W
-# uh1TAe5MmaNyM/q2SzTU9M7pqwF6FQlbA+IRYW33iqe/WqTphxXLRsditXpQ2AP3
-# iouQQo+Lumrtm4VFz8v71MAitERA1SjHebpHsHKanr/tckrYQWxmJk05O365aOOn
-# c1k89D6kktQlq+GiT8y6ontImEs/DgX6WSKO+6/LZ1lPZf49sECP1vi48VqyNzJk
-# bOVJxD7S3ZMvsfeDYQXECo9qCMzbuI9CT2/CSomRFBXAnllCl79uTBWlWkU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPEglGf34a79uqAF
+# 6TgIR/SukJKNMA0GCSqGSIb3DQEBAQUABIIBAAkDVaYG8E1Qzcn3usJQbsj9oMAB
+# GpzIohSOjRBsEA3zQ45TbopVBis+vi82CKldkUki7eCE7QDXvHzI6CYaHEfFgram
+# TaG+62kzIr7uoszKE91KkhYB4d7XCj+WZ1qvT8t36xDM923Lol7PS92Ie+xHlWbj
+# 2ET5YSSNJKERwgKXEowrnUwF+VjhfizxlC/2eCt8nDatrO/Iz0rLjTEueJLyoXlR
+# KkRdmj9aYuHdHeYDCqwQmmaaKQr4DnUre4Jll3iQB1zLcbm2tQnoxp1YwqwJNdox
+# XMeMjVSej/5xpX+IWaTcX6IeOg+J7/+bVbuPlRC1FXVg4HoPfryY4sH2GZA=
 # SIG # End signature block

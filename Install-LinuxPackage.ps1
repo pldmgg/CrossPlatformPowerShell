@@ -1,61 +1,56 @@
-function Manual-PSGalleryModuleInstall {
+function Install-LinuxPackage {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$True)]
-        [string]$ModuleName,
+        [string[]]$PossiblePackageNames,
 
-        [Parameter(Mandatory=$False)]
-        [string]$DownloadDirectory
+        [Parameter(Mandatory=$True)]
+        [string]$CommandName
     )
 
-    if (!$DownloadDirectory) {
-        $DownloadDirectory = $(Get-Location).Path
-    }
+    if (!$(command -v $CommandName)) {
+        foreach ($PackageName in $PossiblePackageNames) {
+            if ($(command -v pacman)) {
+                $null = pacman -S $PackageName --noconfirm *> $null
+            }
+            elseif ($(command -v yum)) {
+                $null = yum -y install $PackageName *> $null
+            }
+            elseif ($(command -v dnf)) {
+                $null = dnf -y install $PackageName *> $null
+            }
+            elseif ($(command -v apt)) {
+                $null = apt-get -y install $PackageName *> $null
+            }
+            elseif ($(command -v zypper)) {
+                $null = zypper install $PackageName --non-interactive *> $null
+            }
 
-    if (!$(Test-Path $DownloadDirectory)) {
-        Write-Error "The path $DownloadDirectory was not found! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if (![bool]$($($env:PSModulePath -split ";") -match [regex]::Escape("$HOME\Documents\WindowsPowerShell\Modules"))) {
-        $env:PSModulePath = "$HOME\Documents\WindowsPowerShell\Modules;$env:PSModulePath"
-    }
-    if (!$(Test-Path "$HOME\Documents\WindowsPowerShell\Modules")) {
-        $null = New-Item -ItemType Directory "$HOME\Documents\WindowsPowerShell\Modules" -Force
-    }
-
-    $searchUrl = "https://www.powershellgallery.com/api/v2/Packages?`$filter=Id eq '$ModuleName' and IsLatestVersion"
-    $ModuleInfo = Invoke-RestMethod $searchUrl
-    if (!$ModuleInfo) {
-        Write-Error "Unable to find Module Named $ModuleName! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-    
-    $OutFilePath = Join-Path $DownloadDirectory $($ModuleInfo.title.'#text' + $ModuleInfo.properties.version + '.zip')
-    if (Test-Path $OutFilePath) {Remove-Item $OutFilePath -Force}
-    Invoke-WebRequest $ModuleInfo.Content.src -OutFile $OutFilePath
-    if (Test-Path "$DownloadDirectory\$ModuleName") {Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force}
-    Expand-Archive $OutFilePath -DestinationPath "$DownloadDirectory\$ModuleName"
-
-    if ($DownloadDirectory -ne "$HOME\Documents\WindowsPowerShell\Modules") {
-        if (Test-Path "$HOME\Documents\WindowsPowerShell\Modules\$ModuleName") {
-            Remove-Item "$HOME\Documents\WindowsPowerShell\Modules\$ModuleName" -Recurse -Force
+            if ($(command -v $CommandName)) {
+                break
+            }
         }
-        Copy-Item -Path "$DownloadDirectory\$ModuleName" -Recurse -Destination "$HOME\Documents\WindowsPowerShell\Modules"
 
-        Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force
+        if (!$(command -v $CommandName)) {
+            Write-Error "Unable to find the command $CommandName! Install unsuccessful! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        else {
+            Write-Host "$PackageName was successfully installed!" -ForegroundColor Green
+        }
     }
-
-    Remove-Item $OutFilePath -Force
+    else {
+        Write-Warning "The command $CommandName is already available!"
+        return
+    }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcaFckdV5ppSCqShzes8vtS41
-# Mzygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5k7VUMgYCifyKSjNX976rDkz
+# wvegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -112,11 +107,11 @@ function Manual-PSGalleryModuleInstall {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOBiXCNKaCz5ATRQ
-# FQW1BFWfquLSMA0GCSqGSIb3DQEBAQUABIIBAKQt4CWTkwnhG1kgAyGMa1oSxd+Q
-# +EPmEv6LraBh+NqM8LrtWHp/xHRWuhQUB8b5LtFs7E+NhQNjECQnAtIGr+Hjifxo
-# JGl2aRbk3dugel2SUqCFpNTSBjCa+uDHKn5dUIvP3W3Rtj9Kb3yobVC74te83GI6
-# t4TTOjL4rtB6IU4wXLX0dfy/kK8QOdz6mB3D1KzYtQdE6aISVcp4rn9AoiJ0XFdf
-# rKc2IC47JIwqpKWxEtZxlrBsd3KgnKVUGqEzE37BaCjSUiuuwORXVYOM0wk6gkXH
-# wAa0CGTI+5qYpEM6N+jlOy1NqpE8iTm7KTCB6XaGKpzXgoR2sN4435z3Pjg=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNd9QqCHNLi8cB8A
+# OT2RbaNpI3l6MA0GCSqGSIb3DQEBAQUABIIBAJtyFj56qzYJBhsUPIhA1yz6vn8v
+# oVwSPlHZx9Gp1L+G+wIbFOC1PVWB8HtPoZByksN8LqAY4LT4lYHYZWRNvU8y7xWy
+# nvkBcYEbpAc+zIU8mKK5Fm2erC0uakLqTjDBjwt7ZNoKcf+K+FyCdojBwCpYUiVO
+# xlph/9jTi0a8/0XSgQAOGNH1bkvkga+IpyYry977jCvim7qhtHSkdZfNe0wHlet6
+# bR3kZ2M1ZoRhTfmaIohxzAdLNCpqfIcaHO60cQfYHAsxA8UKoF5G4Q7lr/y6mygF
+# +SER22ECYIQgVZTSOij1bBDwuSqnrX8TwUaHJjC9zGo3DMROmecqKBdB0e0=
 # SIG # End signature block

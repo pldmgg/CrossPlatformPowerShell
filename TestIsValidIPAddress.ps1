@@ -1,71 +1,14 @@
-# Generic module deployment.
-#
-# ASSUMPTIONS:
-#
-# * folder structure either like:
-#
-#   - RepoFolder
-#     - This PSDeploy file
-#     - ModuleName
-#       - ModuleName.psd1
-#
-#   OR the less preferable:
-#   - RepoFolder
-#     - RepoFolder.psd1
-#
-# * Nuget key in $ENV:NugetApiKey
-#
-# * Set-BuildEnvironment from BuildHelpers module has populated ENV:BHModulePath and related variables
-
-# Publish to gallery with a few restrictions
-if(
-    $env:BHModulePath -and
-    $env:BHBuildSystem -ne 'Unknown' -and
-    $env:BHBranchName -eq "master" -and
-    $env:BHCommitMessage -match '!deploy'
-)
-{
-    Deploy Module {
-        By PSGalleryModule {
-            FromSource $ENV:BHModulePath
-            To PSGallery
-            WithOptions @{
-                ApiKey = $ENV:NugetApiKey
-            }
-        }
-    }
-}
-else
-{
-    "Skipping deployment: To deploy, ensure that...`n" +
-    "`t* You are in a known build system (Current: $ENV:BHBuildSystem)`n" +
-    "`t* You are committing to the master branch (Current: $ENV:BHBranchName) `n" +
-    "`t* Your commit message includes !deploy (Current: $ENV:BHCommitMessage)" |
-        Write-Host
-}
-
-# Publish to AppVeyor if we're in AppVeyor
-if(
-    $env:BHModulePath -and
-    $env:BHBuildSystem -eq 'AppVeyor'
-   )
-{
-    Deploy DeveloperBuild {
-        By AppVeyorModule {
-            FromSource $ENV:BHModulePath
-            To AppVeyor
-            WithOptions @{
-                Version = $env:APPVEYOR_BUILD_VERSION
-            }
-        }
-    }
+function TestIsValidIPAddress([string]$IPAddress) {
+    [boolean]$Octets = (($IPAddress.Split(".") | Measure-Object).Count -eq 4) 
+    [boolean]$Valid  =  ($IPAddress -as [ipaddress]) -as [boolean]
+    Return  ($Valid -and $Octets)
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUNn3UbQR6fAQGLJaia6s7nXCk
-# lkygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJcvO2cefXz7x6d39XLhEgIho
+# wLagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -122,11 +65,11 @@ if(
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIWhCX/ffwBFNLKw
-# aWTzsLHO4ZjCMA0GCSqGSIb3DQEBAQUABIIBABahi2MSqyzjNWFh+Cu0H7vV1oQ7
-# +Z0SaBrq/CHmw/1HHDJ8GWRTZ4nJxzvy5rY3/BKK8mUV42hZyLZDOnVSKP2lHWFv
-# 2O+RnJtp9hEK1YamLQw/Dm4SfvDJocGcDvAy/mcJ/ipjACE1p/EiZhNRnl4FnQqj
-# cProzfc+QkSKtKxGi22DZ8zkwJxFQv2tjLUkU+BJeUcKGUm1xolA6UHngLVx0eQr
-# y8Obm+qfvLl2s0WXtTFWLMr/H1XwEX/yxHDlvkv7Pur0tQ6rjl2uXFIIAMTo9sx6
-# /TCv1HSZsKqLSiYzzmzWtLlOUYsO6/JSYOb3bryVL16wcprEfBHcV/2RciY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLbsC8rbyU0uaN78
+# tzvPS1QTaYMyMA0GCSqGSIb3DQEBAQUABIIBAH3toHWaKzixgBIqlhJs7WiR8Lic
+# y6lfLMl77GFRuA6ePfjq3bwSuIofQAXPfBtyoFfD7J6sJlcK0TvvyUCdse6JokMp
+# f1oS3CtYJiIGA5qFqJic9IUPwP+WnjPqisr8wFGZwoPP5G6uOA4iICgKtdTTJiSl
+# PR3u0Z8ihAj4jSeYFc9dJ1syJbAC4DNmwGZTDz7TiC46d93D4Vw8sxJJ2uZvnyGu
+# DtqJXGUnlrnTbZJnBsGbAhB4NJnHOw5HN1ZKvomJY8SrNi8rdUj4r8AInQiq4DCt
+# T5WrHQncb/f+4J9l4tIL7Gdq43y90e2HkpLlyX3u8Qi7XXzNEsQ8oPiQZAQ=
 # SIG # End signature block

@@ -1,64 +1,31 @@
-# From: http://psrdrgz.github.io/RemoveAuthenticodeSignature/
-function Remove-Signature {
+function ConvertFrom-HCLToPrintF {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory = $False,Position = 0,ValueFromPipeline = $True,ValueFromPipelineByPropertyName = $True)]
-        [Alias('Path')]
-        [string[]]$FilePath
+        [Parameter(Mandatory=$True)]
+        [string]$HCLAsString
     )
 
-    # Make sure they all exist
-    [System.Collections.ArrayList]$FileNotFound = @()
-    foreach ($FullPath in $FilePath) { 
-        if (!$(Test-Path $FullPath)) {
-            Write-Warning "The path $FullPath does not exist!"
-            $null = $FileNotFound.Add($FullPath)
+    $CharArray = [char[]]$($HCLAsString -join "") | foreach {
+        if ($_ -eq '"') {
+            '\' + $_
+        }
+        elseif ($_ -match "\n") {
+            '\n'
+        }
+        else {
+            $_
         }
     }
-    if ($FileNotFound.Count -gt 0) {
-        Write-Error "Unable to find one or more File Paths provided to teh -FilePath parameter! No action taken. Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
 
-    $SingatureLineRegex = '^# SIG # Begin signature block|^<!-- SIG # Begin signature block -->'
+    "printf " + '"' + ($CharArray -join "") + '"'
 
-    foreach ($FullPath in $FilePath) {
-        try {
-            $Content = Get-Content $FullPath -ErrorAction Stop
-        }
-        catch {
-            Write-Error $_
-            continue
-        }
-
-        if ($(Get-Item $FullPath).Extension -match '\.ps1|\.psm1|\.psd1|\.ps1xml' -and $Content -match $SingatureLineRegex) {
-            try {
-                $StringBuilder = New-Object -TypeName System.Text.StringBuilder -ErrorAction Stop
-
-                foreach ($Line in $Content) {
-                    if ($Line -match $SingatureLineRegex) {
-                        Break
-                    }
-                    else {
-                        $null = $StringBuilder.AppendLine($Line)
-                    }
-                }
-
-                Set-Content -Path $FullPath -Value $StringBuilder.ToString().Trim()
-            }
-            catch {
-                Write-Error -Message $_.Exception.Message
-            }
-        }
-    }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUGtrwp+9NOdNM7Lug8kFvHU6M
-# HdWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU1dZKfxiTMi7jja2WJYuWihxb
+# ft2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -115,11 +82,11 @@ function Remove-Signature {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ3JmInE1CmhnTZl
-# tGVlL48f9iTBMA0GCSqGSIb3DQEBAQUABIIBAKnzytOKiPHyXLFVFIkS6ZDsF/6B
-# opTjsLd27iPHqg8aXTAuV+E6Lv1pw6gX1rzpm5RTi+AUOXPUe0kgfW2/FaEm61em
-# UhQOKYy2BsEIUyOSyt/fwet0rBH8Uya2W8tmQrNeHWXJp1O85FncR0TT5pk/tbH+
-# /L2UXBvt+pmaI45Eveyoc+M209YddCQRBg/IRypc1qMKmNgpJl101lCbLzF/mJsP
-# lkzXqqC06TSuc7acmatuJ0+Zl+BTrraKiIAgQiV5R8u0X69ue/4IHr1SoM3f4FG7
-# oTNzbRZyO+a+tQFfh+K9BcNQIT1A15j/uvIS3VyZuegEEnvvBmiin9yTEhc=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAkAabPXYNxGJOuT
+# Id6fR2zTFy9oMA0GCSqGSIb3DQEBAQUABIIBAEP1MfX7EIt6ZkwTgFkErb27tlzD
+# AkVCf4yhB60rLYQmqeESF0fgxh/ofwstS5pUFKMrLxCPxPsVcINOS5bLlMrXIeBi
+# 9uYv8Pslkr7vyTB+EbBfXrRBE7fgFbVKTvQ5IkRxsYUgsd+Tj6uTVIUzchm3cuPz
+# 4S1ZFmV48hUGN3vR3EsjqkH8fiZ8zYuQqWDBrc/2iPYO3ENbBN14CAy7QQW5NNvx
+# cb8RzbbOQ3UoGPChOr4MuMR/MDL+M/UJNIWxTp4egD+cL+FA/A+LPk/tOMwJRAek
+# lU0FjxKxVmGAlMteyJPz8D2m4qT3CVS1c9ufvpENpUQ1O2OADzZb48ZR63s=
 # SIG # End signature block

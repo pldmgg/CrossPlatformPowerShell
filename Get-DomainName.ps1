@@ -1,64 +1,86 @@
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory=$False)]
-    [System.Collections.Hashtable]$TestResources
-)
+function Get-DomainName {
+    [CmdletBinding()]
+    Param()
 
-# NOTE: `Set-BuildEnvironment -Force -Path $PSScriptRoot` from build.ps1 makes the following $env: available:
-<#
-    $env:BHBuildSystem = "Unknown"
-    $env:BHProjectPath = "U:\powershell\ProjectRepos\Sudo"
-    $env:BHBranchName = "master"
-    $env:BHCommitMessage = "!deploy"
-    $env:BHBuildNumber = 0
-    $env:BHProjectName = "Sudo"
-    $env:BHPSModuleManifest = "U:\powershell\ProjectRepos\Sudo\Sudo\Sudo.psd1"
-    $env:BHModulePath = "U:\powershell\ProjectRepos\Sudo\Sudo"
-    $env:BHBuildOutput = "U:\powershell\ProjectRepos\Sudo\BuildOutput"
-#>
+    if (!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") {
+        $Domain = $(Get-CimInstance Win32_ComputerSystem).Domain
+    }
+    if ($PSVersionTable.Platform -eq "Unix" -or $PSVersionTable.OS -match "Darwin") {
+        $Domain = domainname
+        if (!$Domain -or $Domain -eq "(none)") {
+            $ThisHostNamePrep = hostname
+            if ($ThisHostNamePrep -match "\.") {
+                $HostNameArray = $ThisHostNamePrep -split "\."
+                $ThisHostName = $HostNameArray[0]
+                $Domain = $HostNameArray[1..$HostNameArray.Count] -join '.'
+            }
+        }
+            
+        if (!$Domain) {
+            $EtcHostsContent = Get-Content "/etc/hosts"
+            $EtcHostsContentsArray = $(foreach ($HostLine in $EtcHostsContent) {
+                $HostLine -split "[\s]" | foreach {$_.Trim()}
+            }) | Where-Object {![System.String]::IsNullOrWhiteSpace($_)}
+            $PotentialStringsWithDomainName = $EtcHostsContentsArray | Where-Object {
+                $_ -notmatch "localhost" -and
+                $_ -notmatch "localdomain" -and
+                $_ -match "\." -and
+                $_ -match "[a-zA-Z]"
+            } | Sort-Object | Get-Unique
 
-Set-StrictMode -Version latest
-
-# Make sure MetaFixers.psm1 is loaded - it contains Get-TextFilesList
-Import-Module -Name "$PSScriptRoot\MetaFixers.psm1" -Verbose:$false -Force
-
-Describe 'Text files formatting' {
-
-    $allTextFiles = Get-TextFilesList $env:BHProjectPath
-
-    Context 'Files encoding' {
-        It "Doesn't use Unicode encoding" {
-            $unicodeFilesCount = 0
-            $allTextFiles | Foreach-Object {
-                if (Test-FileInUnicode $_) {
-                    $unicodeFilesCount += 1
-                    Write-Warning "File $($_.FullName) contains 0x00 bytes. It's probably uses Unicode and need to be converted to UTF-8. Use Fixer 'Get-UnicodeFilesList `$pwd | ConvertTo-UTF8'."
+            if ($PotentialStringsWithDomainName.Count -eq 0) {
+                Write-Error "Unable to determine domain for $(hostname)! Please use the -DomainName parameter and try again. Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+            
+            [System.Collections.ArrayList]$PotentialDomainsPrep = @()
+            foreach ($Line in $PotentialStringsWithDomainName) {
+                if ($Line -match "^\.") {
+                    $null = $PotentialDomainsPrep.Add($Line.Substring(1,$($Line.Length-1)))
+                }
+                else {
+                    $null = $PotentialDomainsPrep.Add($Line)
                 }
             }
-            $unicodeFilesCount | Should Be 0
+            [System.Collections.ArrayList]$PotentialDomains = @()
+            foreach ($PotentialDomain in $PotentialDomainsPrep) {
+                $RegexDomainPattern = "^([a-zA-Z0-9][a-zA-Z0-9-_]*\.)*[a-zA-Z0-9]*[a-zA-Z0-9-_]*[[a-zA-Z0-9]+$"
+                if ($PotentialDomain -match $RegexDomainPattern) {
+                    $FinalPotentialDomain = $PotentialDomain -replace $ThisHostName,""
+                    if ($FinalPotentialDomain -match "^\.") {
+                        $null = $PotentialDomains.Add($FinalPotentialDomain.Substring(1,$($FinalPotentialDomain.Length-1)))
+                    }
+                    else {
+                        $null = $PotentialDomains.Add($FinalPotentialDomain)
+                    }
+                }
+            }
+
+            if ($PotentialDomains.Count -eq 1) {
+                $Domain = $PotentialDomains
+            }
+            else {
+                $Domain = $PotentialDomains[0]
+            }
         }
     }
 
-    Context 'Indentations' {
-        It 'Uses spaces for indentation, not tabs' {
-            $totalTabsCount = 0
-            $allTextFiles | Foreach-Object {
-                $fileName = $_.FullName
-                (Get-Content $_.FullName -Raw) | Select-String "`t" | Foreach-Object {
-                    Write-Warning "There are tab in $fileName. Use Fixer 'Get-TextFilesList `$pwd | ConvertTo-SpaceIndentation'."
-                    $totalTabsCount++
-                }
-            }
-            $totalTabsCount | Should Be 0
-        }
+    if ($Domain) {
+        $Domain
+    }
+    else {
+        Write-Error "Unable to determine Domain Name! Halting!"
+        $global:FunctionResult = "1"
+        return
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU920hMad4qdEHQNXdKcm/iTAS
-# kKqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUeqfJM3K8A6InvC/wFroQypby
+# GAegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -115,11 +137,11 @@ Describe 'Text files formatting' {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLm3geAHTiY409Wn
-# +F9RoZsZAXJTMA0GCSqGSIb3DQEBAQUABIIBAFg84bzACTyo/03Cs0FfzQPTnKt8
-# RLLHRmdIwyKEl/B4Tafy6sonWHhkPJtLnJSK9t15Z2NDkXMcY9osftyYFJ9erIMt
-# LAtIyosoVC8vnaNO1iRXhqTfA+z3wb5oPlh/AaTv/vDio9PFxfqGUZ44cGvheURW
-# skrLn3tmsNHxwwnk2zn+K1F58wF0xBK+bfqC9x0mViwEVQUOof78B207aNEKPPwu
-# ZgVLxLIKTM3gQLXETb4bRq7GWFFEd6BpG5B9EosjRvSUBp+xCZxR56iYKifymxBK
-# A3rtIA+2mJV5SOyUjey6DIW56Ap6pezP3jMjJaJmm0WlynHswvM8zvsQHWs=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFB3ruEh/mYMtUExt
+# iRiNS8K/Li5mMA0GCSqGSIb3DQEBAQUABIIBAEXkeZLiESIA9aItTOhYqhiJ+vQL
+# 4uZ1VgfhEocxcsZ6G0XSOovUA2ETNTl2JsQB9ZyswlqxoduYU2Q6N4H4QrjxMyNs
+# /5mQKvTbzH8NyeiTzzRP/AVqnAuJb9aNpv3KtcON0UrRN6P2ULrNDvNtlbDvDp+U
+# EvdB5DD7zhxnWSOP7weXa9lH/IYGYlG/u9sudyBOLfx4Ui5QRB6SG6YaszObgHLZ
+# qu6HfNVV+qTVt4vLlRRpUj8uWtGt/CsVYROMV4X5aWw9/jjtKOBmsrkMpYm0qF6D
+# jtJvIQOJhiedJKc2AZTodF3G8xWEIH+UkwgdL2darTCfmEWYQsU1Z5c10gM=
 # SIG # End signature block
