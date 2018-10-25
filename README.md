@@ -10,9 +10,9 @@ Download the function you're interested in to a file of the same name. Then, sim
 . ./<NameOfFunction>.ps1
 ```
 
-##IMPORTANT NOTE:
+## IMPORTANT NOTE
 
-On Windows, using PowerShell Core, some functions depend on the funcitons in the "Helper" folder. Simply place the "Helper" folder in the same directory as the function you would like to use. Functions that require these Helper functions will start with the following code:
+On Windows, using PowerShell Core, some functions depend on the functions in the "Helper" folder. Simply place the Helper folder in the same directory as the function you would like to use. Functions that require these Helper functions will start with the following code:
 
 ```powershell
 if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and $PSVersionTable.PSEdition -eq "Core") {
