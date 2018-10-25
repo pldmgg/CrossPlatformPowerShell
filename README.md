@@ -10,8 +10,6 @@ Download the function you're interested in to a file of the same name. Then, sim
 PS C:\Users\zeroadmin> . ./Get-DomainController.ps1
 PS C:\Users\zeroadmin> Get-DomainController
 
-PS C:\Users\zeroadmin> Get-DomainController
-
 FoundDomainControllers                 PrimaryDomainController
 ----------------------                 -----------------------
 {ZeroDC01.zero.lab, ZeroDC02.zero.lab} ZeroDC01.zero.lab
