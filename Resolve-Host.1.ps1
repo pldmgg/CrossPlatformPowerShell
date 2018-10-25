@@ -1,14 +1,24 @@
-function ResolveHost {
+function Resolve-Host {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$True)]
         [string]$HostNameOrIP
     )
 
+    #region >> Helper Functions
+
+    function Test-IsValidIPAddress([string]$IPAddress) {
+        [boolean]$Octets = (($IPAddress.Split(".") | Measure-Object).Count -eq 4) 
+        [boolean]$Valid  =  ($IPAddress -as [ipaddress]) -as [boolean]
+        Return  ($Valid -and $Octets)
+    }
+
+    #endregion >> Helper Functions
+
     ##### BEGIN Main Body #####
 
     $RemoteHostNetworkInfoArray = @()
-    if (!$(TestIsValidIPAddress -IPAddress $HostNameOrIP)) {
+    if (!$(Test-IsValidIPAddress -IPAddress $HostNameOrIP)) {
         try {
             $HostNamePrep = $HostNameOrIP
             [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
@@ -48,7 +58,7 @@ function ResolveHost {
             }
         }
     }
-    if (TestIsValidIPAddress -IPAddress $HostNameOrIP) {
+    if (Test-IsValidIPAddress -IPAddress $HostNameOrIP) {
         try {
             $HostIPPrep = $HostNameOrIP
             [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
@@ -161,8 +171,8 @@ function ResolveHost {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUI8H3C7hqz3yPShdzNk/ugueV
-# GnGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUee717KT8go4RCBYGU6Acx4Hq
+# yR6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -219,11 +229,11 @@ function ResolveHost {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGQHIWWvRMZI3LNg
-# XGjldMGHfHaiMA0GCSqGSIb3DQEBAQUABIIBAMFmcwhm3I2HeAZ67DyENpNffuR+
-# 1HQDDnYDm8uJw17Uw7BuNqwBmTqkEo4/xNuwL1Gtwb1rKDK1bvmXebTTCrPnIrO/
-# NW1knqnns4EiXIcxwzFlcamPSFuUDJRebmGzLmTXyw7n7gmDQWLdwOuZMbxfRc/H
-# 8Cz+Z8tkz7XifQR2GEcCx33tbq2eXcziceVofrSzdFF/g5dar8eczengLps4p2A+
-# MIzPaKq7BVImv+teP2uPB3fx7x0bcdmfJISD5qymG8T9GhvH1iZ1IQO8rbao5U3+
-# Ky26G8sDm/J43VZ1z9vf8TZCnOMHZleBezDhjnjM+qk77qMmeDdYVhYcK0w=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFZphLE/pLXCRChm
+# AsyF/Ksej/7lMA0GCSqGSIb3DQEBAQUABIIBAKvCspWhmN5mwhUzCPGUsaOF534M
+# +l1b2SVcDLv7P2ot1ohzWF2h3aTRLsRTv3Cv/eZT6uTYpYfZE41ckEOiiJJsC46G
+# 08GIy/NKt6Lp8PoTACpPhvjct3FN/GHJWZaBQ5I7R9yqMggYLDZcvt4k30pjOAuT
+# m2jo4cOeWC9S8WApz+uNuc0tSVlMSVGYFiL8guJ8daJZDW6FxyS4fWv4r4rpJ9D+
+# niFJWyFOAcz+9t8vLXz8I7T6G3DO9iN0hF7WWtIjO7Hr453rt7pJtORu2oZY639K
+# nfjHfC/WzTMJr6uUlN7nSTxLV3mpZ+mAvZ0rpVnpphwoQCJNleV711suZcs=
 # SIG # End signature block

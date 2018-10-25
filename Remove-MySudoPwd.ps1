@@ -11,9 +11,40 @@
         Remove-SudoPwd
         
 #>
-function RemoveMySudoPwd {
+function Remove-MySudoPwd {
     [CmdletBinding()]
     Param()
+
+    #region >> Helper Functions
+
+    function Get-Elevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+    }
+
+    #endregion >> Helper Functions
+
 
     #region >> Prep
 
@@ -24,16 +55,16 @@ function RemoveMySudoPwd {
     }
     
     # 'Get-SudoStatus' cannnot be run as root...
-    if (GetElevation) {
-        $GetElevationAsString = ${Function:GetElevation}.Ast.Extent.Text
-        $GetMySudoStatusAsString = ${Function:GetMySudoStatus}.Ast.Extent.Text
-        $FinalScript = $GetElevationAsString + "`n" + $GetMySudoStatusAsString + "`n" + "GetMySudoStatus"
+    if (Get-Elevation) {
+        $GetElevationAsString = ${Function:Get-Elevation}.Ast.Extent.Text
+        $GetMySudoStatusAsString = ${Function:Get-MySudoStatus}.Ast.Extent.Text
+        $FinalScript = $GetElevationAsString + "`n" + $GetMySudoStatusAsString + "`n" + "Get-MySudoStatus"
         $PwshScriptBytes = [System.Text.Encoding]::Unicode.GetBytes($FinalScript)
         $EncodedCommand = [Convert]::ToBase64String($PwshScriptBytes)
         $GetSudoStatusResult = su $env:SUDO_USER -c "pwsh -EncodedCommand $EncodedCommand" | ConvertFrom-Json
     }
     else {
-        $GetSudoStatusResult = GetMySudoStatus | ConvertFrom-Json
+        $GetSudoStatusResult = Get-MySudoStatus | ConvertFrom-Json
     }
     
     if (!$GetSudoStatusResult.HasSudoPrivileges) {
@@ -154,8 +185,8 @@ function RemoveMySudoPwd {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUnF3ZbGWTYnBINEnBAdWxJLz9
-# lTSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUyxCvCTtE1TANWOo82tXEJDaO
+# WLigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -212,11 +243,11 @@ function RemoveMySudoPwd {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBN62vn2T8BIVXnP
-# TVGMespIkGNPMA0GCSqGSIb3DQEBAQUABIIBAC0xhHRdzbzo6SBcN2FMyJ/eU6hU
-# 2HOuh3KRS428xQ2i/jDwwfYfueCTxs8rPUknw+/8ydIvRWQzazWQqsa5yzzG+xrC
-# +DViC5AZUfwCTyDrG4c1XWoni4U8v/zMkQGdMnrz79W/o0s5i/Iq55lq44g0zlUG
-# MwIzQ7JRZ9zrqBdsq4JaNqh5C5xb3XvHRpJ6SVLPjpmYPT483f0enN6odRxuPu14
-# RWnY/K+jcpc+QH2H+819kWTPoBkhaGOifIjrR2icnBUlb89pLACENna8wraxtdPi
-# /7GxefU6dBoPnC6Dyw6CIyeLG5Kfxw92aVqNG5cbRT7F1y1tJXmVAP4xP3I=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL346JfSJg8dOR8v
+# noLD/vs3LQi3MA0GCSqGSIb3DQEBAQUABIIBAHV0VYWDWbXZ2wKSYncDKAUPAsk7
+# of6f5qys9EHe4LRu3BDMxZOS3fpUGhS3datB1+1mqoLmUnexxtO+g3aG0KTdiqZf
+# Jq7MKxQtv6YvvsEFdb5JScyekeOZugY7NpojRgalyQ4ucjl7g6RBKhO1ChWfo0Lg
+# L5ueHXznNTT6SdgTv0X8Qwdq7lj8Lh3BPKmF2cMz1szML0Ghe3e53tKEohs6GQmt
+# MeIxqUu8zDm4kYDuax2awFqkEKThTKCFMP6ZEnlcHdr8eii5LOLRaXtuLug3UZE8
+# SFqOgImLt0Pl3D+wGGLWDuJIRG0cEqy8naqYeVehfCFl18tkRAP06/s/wDE=
 # SIG # End signature block

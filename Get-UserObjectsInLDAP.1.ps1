@@ -1,4 +1,4 @@
-function Get-ComputerObjectsInLDAP {
+function Get-UserObjectsInLDAP {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$False)]
@@ -548,7 +548,6 @@ function Get-ComputerObjectsInLDAP {
 
     #endregion >> Helper Functions
 
-
     #region >> Prep
     
     if ($PSVersionTable.Platform -eq "Unix" -and !$LDAPCreds) {
@@ -685,8 +684,6 @@ function Get-ComputerObjectsInLDAP {
         $LDAPUri = $LDAPInfo.LDAPBaseUri + ":$Port"
     }
 
-    #endregion >> Prep
-
     if ($PSVersionTable.Platform -eq "Unix") {
         $SimpleDomainPrep = $PDC -split "\."
         $SimpleDomain = $SimpleDomainPrep[1..$($SimpleDomainPrep.Count-1)] -join "."
@@ -698,7 +695,7 @@ function Get-ComputerObjectsInLDAP {
         $BindUserName = $LDAPCreds.UserName
         $BindPassword = $LDAPCreds.GetNetworkCredential().Password
 
-        $ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b $DomainLDAPContainers -s sub "(objectClass=computer)" cn
+        $ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b $DomainLDAPContainers -s sub "(&(objectCategory=User))" cn
         if ($LASTEXITCODE -ne 0) {
             if ($LASTEXITCODE -eq 49) {
                 Write-Error "Invalid credentials. Please check them and try again. Halting!"
@@ -712,9 +709,9 @@ function Get-ComputerObjectsInLDAP {
             }
         }
 
-        $ComputerObjectsInLDAP = $($ldapSearchOutput -split "`n") -match "cn: "
+        $UserObjectsInLDAP = $($ldapSearchOutput -split "`n") -match "cn: "
         if ($ObjectCount -gt 0) {
-            $ComputerObjectsInLDAP = $ComputerObjectsInLDAP[0..$($ObjectCount-1)]
+            $UserObjectsInLDAP = $UserObjectsInLDAP[0..$($ObjectCount-1)]
         }
     }
     else {
@@ -728,13 +725,13 @@ function Get-ComputerObjectsInLDAP {
                 $LDAPSearchRoot = [System.DirectoryServices.DirectoryEntry]::new($LDAPUri)
             }
             $LDAPSearcher = [System.DirectoryServices.DirectorySearcher]::new($LDAPSearchRoot)
-            $LDAPSearcher.Filter = "(objectClass=computer)"
+            $LDAPSearcher.Filter = "(&(objectCategory=User))"
             $LDAPSearcher.SizeLimit = 0
             $LDAPSearcher.PageSize = 250
-            $ComputerObjectsInLDAP = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
+            $UserObjectsInLDAP = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
 
             if ($ObjectCount -gt 0) {
-                $ComputerObjectsInLDAP = $ComputerObjectsInLDAP[0..$($ObjectCount-1)]
+                $UserObjectsInLDAP = $UserObjectsInLDAP[0..$($ObjectCount-1)]
             }
         }
         catch {
@@ -744,14 +741,14 @@ function Get-ComputerObjectsInLDAP {
         }
     }
 
-    $ComputerObjectsInLDAP
+    $UserObjectsInLDAP
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU9lZZJOuOzlZd0jhaXufrNQsH
-# OUugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUz2MxhQB/fqQ1HwYSKpNARmhl
+# W3+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -808,11 +805,11 @@ function Get-ComputerObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAIiCT5OHXFO4W9U
-# 8dpaP++JX+OyMA0GCSqGSIb3DQEBAQUABIIBAGL+FzVbCA3pppQkWilnGErxAowK
-# ExKJS+QR/GCBcQ8N9CHQtvq7/KyzQJfaDalfaKZfpsyDI8+xy+R+impFgdLAtYWz
-# 1/ygqRwFE2PNUS2n7CSwy8+INnZa/hBk2IU4W601ic/n7RkZysQmFn69QWHNiWhk
-# CCsKIww1aGw57yoMGu3H228NDv3ztYgsjTYaI+MI0h7DQYKgla0HkmhH9BY0e0vS
-# TGoB1aoC0UTOfc5sWYt5CHZKuJMWbJEc1v3nfAWz6o1SwJAaeG6JLi7BOpLdk9MD
-# EW1QyyLqAlIFURN4sqc0SH4AyfV6zyxE5JOap7dryAYo2vOOShTod47dQoU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDDgIbBbqpkzeLO7
+# X0PgFOGGuBu3MA0GCSqGSIb3DQEBAQUABIIBAIOrv90fpfrmTbO4zzYdObkBUVBQ
+# 3L7/9kHPK04QpOmQQWMZpaYzNvODPdCEx65TieVY95QSZDfVjoZk1/a1S1DBW8NJ
+# m82Ns108he5anNC5hmv6yH+3MOcVpm/dqv6TjYHBtsipBplN7L/PuKVxC140htMb
+# iCDXGd8LK2XFRqIkmDMdwW1EWXa+viw5cpPGphZswSZQXYVDH4ExmTLYb8FgYyA8
+# KAnrm3D8ir41xVnrD7UyxBvvWKT8L/DM9EiHYciTIXbzkDhwbzOzAnjlTObHQJzi
+# lno3pvfFlLZ7+A9Kbf6T+Rj06Cc0TbhcHU5nqnE3Wm76QLHwN912HB9c9hY=
 # SIG # End signature block

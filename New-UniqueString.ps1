@@ -1,64 +1,34 @@
-function TestPort {
+function New-UniqueString {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$False)]
-        $HostName = $env:COMPUTERNAME,
+        [string[]]$ArrayOfStrings,
 
-        [Parameter(Mandatory=$False)]
-        [int]$Port = $(Read-Host -Prompt "Please enter the port number you would like to check.")
+        [Parameter(Mandatory=$True)]
+        [string]$PossibleNewUniqueString
     )
 
-    Begin {
-
-        ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
-        
-        try {
-            $HostNameNetworkInfo = ResolveHost -HostNameOrIP $HostName -ErrorAction Stop
-        }
-        catch {
-            Write-Error "Unable to resolve $HostName! Halting!"
-            $global:FunctionResult = "1"
-            return
-        }
-
-        $tcp = New-Object Net.Sockets.TcpClient
-        $RemoteHostFQDN = $HostNameNetworkInfo.FQDN
-        
-        ##### END Variable/Parameter Transforms and PreRun Prep #####
+    if (!$ArrayOfStrings -or $ArrayOfStrings.Count -eq 0 -or ![bool]$($ArrayOfStrings -match "[\w]")) {
+        $PossibleNewUniqueString
     }
-
-    ##### BEGIN Main Body #####
-    Process {
-        if ($pscmdlet.ShouldProcess("$RemoteHostFQDN","Test Connection on $RemoteHostFQDN`:$Port")) {
-            try {
-                $tcp.Connect($RemoteHostFQDN, $Port)
-            }
-            catch {}
-
-            if ($tcp.Connected) {
-                $tcp.Close()
-                $open = $true
-            }
-            else {
-                $open = $false
-            }
-
-            $PortTestResult = [pscustomobject]@{
-                Address = $RemoteHostFQDN
-                Port    = $Port
-                Open    = $open
-            }
-            $PortTestResult
+    else {
+        $OriginalString = $PossibleNewUniqueString
+        $Iteration = 1
+        while ($ArrayOfStrings -contains $PossibleNewUniqueString) {
+            $AppendedValue = "_$Iteration"
+            $PossibleNewUniqueString = $OriginalString + $AppendedValue
+            $Iteration++
         }
-        ##### END Main Body #####
+
+        $PossibleNewUniqueString
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcZ2gGFQ7He9TN4JCrKnjht9/
-# +JWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5KwN548z3XSUkQUXiAVrabhN
+# 2ZCgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -115,11 +85,11 @@ function TestPort {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEuobC9z8pkzjDnG
-# xOi+b7srtObuMA0GCSqGSIb3DQEBAQUABIIBAKDIAS7dw5DJr++0IkWo78MYnGom
-# 51wV8/7DiMhn+x05Il77WhGQJX0qCe+sCGDz9imKVKAnoh7IObHPkYlBs1nE1ltG
-# RTKVdA3uosJjGwcTuQxkN+uM2Id5Oz2KtvwB7wqBbg5XAcbz6t/BqcaQ3w4PDGWJ
-# 0EY/17b7jaPZoMJf9mmpEQ2gmxjSZFE1TU2RIyZgr6KpWCx11ZdHce9XQM2tMGX4
-# vgxevysw+9CodBUydL3NxJK9oAAeSFqZkz3HKdkZWLUeLu/ffb1ilVKMb527Z7SI
-# NamJokmS/7K6bXr3LDNmxW4uF/2wVPMQhSqu4SAB0hhsbif2j16ZdHB75bg=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAM1kjkxG4922nxR
+# 9k8mdFj5ZFITMA0GCSqGSIb3DQEBAQUABIIBAGQL690oq0XlcLvNFAIJn57qHbaz
+# mG3qPAwugadVy/6edlcwEeZZA/qvqahkyuQTdlZF42aV0Ms0L/jE4ZR7vcekYRr1
+# O2i4TqhM0UkubyKAFqWUV4Gl7AQDAgrTfRcedFYFUCgy4CIa+M71DqAgfSs74GFh
+# kzI+qIFb2pJO+4u3QHOTC43pzQbs/fKiWLCp0zSgkbcTOjj3sSrG1ZcVQ6fgTO/F
+# 70bBvF5PdZ6sGDCr96TpPAGIRmbsXl/ytOFJFPMMXjIERADBYlaj2iWzJhriNzuM
+# 6BGO8b16vV+jHnxKVoAvL5eUJ/Z7f9zdy8TTqhDKTdfBtRYGdkvLwJ75+rA=
 # SIG # End signature block

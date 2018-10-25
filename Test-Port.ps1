@@ -1,14 +1,64 @@
-function TestIsValidIPAddress([string]$IPAddress) {
-    [boolean]$Octets = (($IPAddress.Split(".") | Measure-Object).Count -eq 4) 
-    [boolean]$Valid  =  ($IPAddress -as [ipaddress]) -as [boolean]
-    Return  ($Valid -and $Octets)
+function Test-Port {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$False)]
+        $HostName = $env:COMPUTERNAME,
+
+        [Parameter(Mandatory=$False)]
+        [int]$Port = $(Read-Host -Prompt "Please enter the port number you would like to check.")
+    )
+
+    Begin {
+
+        ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+        
+        try {
+            $HostNameNetworkInfo = Resolve-Host -HostNameOrIP $HostName -ErrorAction Stop
+        }
+        catch {
+            Write-Error "Unable to resolve $HostName! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+
+        $tcp = New-Object Net.Sockets.TcpClient
+        $RemoteHostFQDN = $HostNameNetworkInfo.FQDN
+        
+        ##### END Variable/Parameter Transforms and PreRun Prep #####
+    }
+
+    ##### BEGIN Main Body #####
+    Process {
+        if ($pscmdlet.ShouldProcess("$RemoteHostFQDN","Test Connection on $RemoteHostFQDN`:$Port")) {
+            try {
+                $tcp.Connect($RemoteHostFQDN, $Port)
+            }
+            catch {}
+
+            if ($tcp.Connected) {
+                $tcp.Close()
+                $open = $true
+            }
+            else {
+                $open = $false
+            }
+
+            $PortTestResult = [pscustomobject]@{
+                Address = $RemoteHostFQDN
+                Port    = $Port
+                Open    = $open
+            }
+            $PortTestResult
+        }
+        ##### END Main Body #####
+    }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJcvO2cefXz7x6d39XLhEgIho
-# wLagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUivSRmRW+9K5k/TTz3OE927uK
+# IY6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -65,11 +115,11 @@ function TestIsValidIPAddress([string]$IPAddress) {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLbsC8rbyU0uaN78
-# tzvPS1QTaYMyMA0GCSqGSIb3DQEBAQUABIIBAH3toHWaKzixgBIqlhJs7WiR8Lic
-# y6lfLMl77GFRuA6ePfjq3bwSuIofQAXPfBtyoFfD7J6sJlcK0TvvyUCdse6JokMp
-# f1oS3CtYJiIGA5qFqJic9IUPwP+WnjPqisr8wFGZwoPP5G6uOA4iICgKtdTTJiSl
-# PR3u0Z8ihAj4jSeYFc9dJ1syJbAC4DNmwGZTDz7TiC46d93D4Vw8sxJJ2uZvnyGu
-# DtqJXGUnlrnTbZJnBsGbAhB4NJnHOw5HN1ZKvomJY8SrNi8rdUj4r8AInQiq4DCt
-# T5WrHQncb/f+4J9l4tIL7Gdq43y90e2HkpLlyX3u8Qi7XXzNEsQ8oPiQZAQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNnnaxIps9akZq0L
+# T3JFp/pSkn1uMA0GCSqGSIb3DQEBAQUABIIBAAt4LG/akpq6wjLq+jg66sWpfQRx
+# 4SjKj0WGWjlqeG4HrU80dhGFMRhjUVQvx9mWVyvX72gO84D3HHiKa4qFbBLrJNMe
+# BqRyfgVOBdboSmDofif6UcVXxDoaOBc70vP0qUC314UdMd9SkrMEB40esZOPBakg
+# /GsvW0VmrIc86lqnqGbtr4jzpg78oBRcrIKr8TvRdUgHdWeSn4b7PXLeCf12+rBy
+# cmolbQSeM/INcjQNh9nfT0HnnaOugyy1yZsX5UgzVWK2bjSowqcjgmpLWre3YHct
+# 8OEJLFqqJtadkyEtFAiFE2eWSjB8Z5u+vQ58NYRUku6+0yo7DCPalF8NuzI=
 # SIG # End signature block
