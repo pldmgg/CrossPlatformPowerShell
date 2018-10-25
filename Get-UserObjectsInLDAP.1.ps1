@@ -52,19 +52,19 @@ function Get-UserObjectsInLDAP {
         if (!$(command -v $CommandName)) {
             foreach ($PackageName in $PossiblePackageNames) {
                 if ($(command -v pacman)) {
-                    $null = pacman -S $PackageName --noconfirm *> $null
+                    $null = sudo pacman -S $PackageName --noconfirm *> $null
                 }
                 elseif ($(command -v yum)) {
-                    $null = yum -y install $PackageName *> $null
+                    $null = sudo yum -y install $PackageName *> $null
                 }
                 elseif ($(command -v dnf)) {
-                    $null = dnf -y install $PackageName *> $null
+                    $null = sudo dnf -y install $PackageName *> $null
                 }
                 elseif ($(command -v apt)) {
-                    $null = apt-get -y install $PackageName *> $null
+                    $null = sudo apt-get -y install $PackageName *> $null
                 }
                 elseif ($(command -v zypper)) {
-                    $null = zypper install $PackageName --non-interactive *> $null
+                    $null = sudo zypper install $PackageName --non-interactive *> $null
                 }
     
                 if ($(command -v $CommandName)) {
@@ -653,7 +653,7 @@ function Get-UserObjectsInLDAP {
 
         $LDAPInfo = Test-LDAP -ADServerHostNameOrIP $PDC -ErrorAction Stop
         if (!$DomainControllerInfo) {throw "Problem with GetDomainController function! Halting!"}
-        if (!$LDAPInfo) {throw "Problem with TestLDAP function! Halting!"}
+        if (!$LDAPInfo) {throw "Problem with Test-LDAP function! Halting!"}
     }
     catch {
         Write-Error $_
@@ -747,8 +747,8 @@ function Get-UserObjectsInLDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUz2MxhQB/fqQ1HwYSKpNARmhl
-# W3+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU++SBVOX4dPxJEoeYng2dpvg3
+# 7yKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -805,11 +805,11 @@ function Get-UserObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDDgIbBbqpkzeLO7
-# X0PgFOGGuBu3MA0GCSqGSIb3DQEBAQUABIIBAIOrv90fpfrmTbO4zzYdObkBUVBQ
-# 3L7/9kHPK04QpOmQQWMZpaYzNvODPdCEx65TieVY95QSZDfVjoZk1/a1S1DBW8NJ
-# m82Ns108he5anNC5hmv6yH+3MOcVpm/dqv6TjYHBtsipBplN7L/PuKVxC140htMb
-# iCDXGd8LK2XFRqIkmDMdwW1EWXa+viw5cpPGphZswSZQXYVDH4ExmTLYb8FgYyA8
-# KAnrm3D8ir41xVnrD7UyxBvvWKT8L/DM9EiHYciTIXbzkDhwbzOzAnjlTObHQJzi
-# lno3pvfFlLZ7+A9Kbf6T+Rj06Cc0TbhcHU5nqnE3Wm76QLHwN912HB9c9hY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDhwf1M+TGpQtnST
+# +VUJhszEc7lkMA0GCSqGSIb3DQEBAQUABIIBAI5RIF382glwAEd49wQC7T8y86q4
+# oOUtOlu86WhPH0kZ6Qzc561wJ6050QMTjglfSbvR76s2/+QDSdin0uUh1Nse7Mxy
+# N3ZxP9E4InuoYlA1TYRAEb66hEmo2aXVminCMU6ULukqXPgKVokf6R3f0sMDTiI4
+# tguTsS9PJ2jVK9E3hqw+jCRvB5TQeX224ciGtqfndSL94blQAp80m+/qgtf097G1
+# 1T+NtHrfDzzRDtCYVQQSgm5XqdlR94MljTQ9Y3TRGZanhxMHR0iOC/vV1lUs8YI0
+# pwXApN2qj2lCrlnUj/RRWxe/7tIR9TPwcanH6MQAF2IIFEzS27Fh6Kwo0Tc=
 # SIG # End signature block

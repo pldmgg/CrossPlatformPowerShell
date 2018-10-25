@@ -52,19 +52,19 @@ function Get-ComputerObjectsInLDAP {
         if (!$(command -v $CommandName)) {
             foreach ($PackageName in $PossiblePackageNames) {
                 if ($(command -v pacman)) {
-                    $null = pacman -S $PackageName --noconfirm *> $null
+                    $null = sudo pacman -S $PackageName --noconfirm *> $null
                 }
                 elseif ($(command -v yum)) {
-                    $null = yum -y install $PackageName *> $null
+                    $null = sudo yum -y install $PackageName *> $null
                 }
                 elseif ($(command -v dnf)) {
-                    $null = dnf -y install $PackageName *> $null
+                    $null = sudo dnf -y install $PackageName *> $null
                 }
                 elseif ($(command -v apt)) {
-                    $null = apt-get -y install $PackageName *> $null
+                    $null = sudo apt-get -y install $PackageName *> $null
                 }
                 elseif ($(command -v zypper)) {
-                    $null = zypper install $PackageName --non-interactive *> $null
+                    $null = sudo zypper install $PackageName --non-interactive *> $null
                 }
     
                 if ($(command -v $CommandName)) {
@@ -654,7 +654,7 @@ function Get-ComputerObjectsInLDAP {
 
         $LDAPInfo = Test-LDAP -ADServerHostNameOrIP $PDC -ErrorAction Stop
         if (!$DomainControllerInfo) {throw "Problem with GetDomainController function! Halting!"}
-        if (!$LDAPInfo) {throw "Problem with TestLDAP function! Halting!"}
+        if (!$LDAPInfo) {throw "Problem with Test-LDAP function! Halting!"}
     }
     catch {
         Write-Error $_
@@ -750,8 +750,8 @@ function Get-ComputerObjectsInLDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU9lZZJOuOzlZd0jhaXufrNQsH
-# OUugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUYomuKXDGg6Oaw4EXFoIC6qiu
+# v/Wgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -808,11 +808,11 @@ function Get-ComputerObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAIiCT5OHXFO4W9U
-# 8dpaP++JX+OyMA0GCSqGSIb3DQEBAQUABIIBAGL+FzVbCA3pppQkWilnGErxAowK
-# ExKJS+QR/GCBcQ8N9CHQtvq7/KyzQJfaDalfaKZfpsyDI8+xy+R+impFgdLAtYWz
-# 1/ygqRwFE2PNUS2n7CSwy8+INnZa/hBk2IU4W601ic/n7RkZysQmFn69QWHNiWhk
-# CCsKIww1aGw57yoMGu3H228NDv3ztYgsjTYaI+MI0h7DQYKgla0HkmhH9BY0e0vS
-# TGoB1aoC0UTOfc5sWYt5CHZKuJMWbJEc1v3nfAWz6o1SwJAaeG6JLi7BOpLdk9MD
-# EW1QyyLqAlIFURN4sqc0SH4AyfV6zyxE5JOap7dryAYo2vOOShTod47dQoU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFTt/pFT6gKr/8sX
+# YRYbePucdYHPMA0GCSqGSIb3DQEBAQUABIIBAIR+CJTusANs9E0wFNMYvetsZ5Ks
+# RjT2dihZdYIQ9dpqMok31AMfAgTr18gwfZLWmaUMsc/XyIms4j2vLoLQfUR1jPD3
+# 65/IckKRdGIoNoctuSCHSMrQcm74vTLhAddmNrFlf7j5za0H7EMT4U13p4/N/fN3
+# FNpqzlZysULTzP4IeFGaiBmQxVFyPHTUHLsE2NZu1txOeIHcLdKaZjd66O7yiHCG
+# S1nTqiysZjOrWdvHCYZwlDxNGdNl8sDq4pxdMBj323qG52SKyrZ2Eckh80yh2Gxt
+# i2iErnF1WmYF9ZQY2CCP9p+s6xqv3KP2fjOyIcp6pVKRCzwDQKlUwuZOnS0=
 # SIG # End signature block

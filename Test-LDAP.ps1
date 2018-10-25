@@ -33,9 +33,369 @@ function Test-LDAP {
         }
     }
 
+    function Download-NuGetPackage {
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory=$True)]
+            [string]$AssemblyName,
+    
+            [Parameter(Mandatory=$False)]
+            [string]$NuGetPkgDownloadDirectory,
+    
+            [Parameter(Mandatory=$False)]
+            [switch]$AllowPreRelease,
+    
+            [Parameter(Mandatory=$False)]
+            [switch]$Silent
+        )
+    
+        #region >> Helper Functions
+        
+        function Get-NativePath {
+            [CmdletBinding()]
+            Param( 
+                [Parameter(Mandatory=$True)]
+                [string[]]$PathAsStringArray
+            )
+        
+            $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+                $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+                
+                if ($SplitAttempt.Count -gt 1) {
+                    foreach ($obj in $SplitAttempt) {
+                        $obj
+                    }
+                }
+                else {
+                    $pathPart
+                }
+            }
+            $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
+        
+            $PathAsStringArray
+        
+        }
+        
+        #endregion >> Helper Functions
+    
+        #region >> Prep
+    
+        if ($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT" -and !$NuGetPkgDownloadDirectory) {
+            Write-Error "On this OS Platform (i.e. $($PSVersionTable.Platform)), the -NuGetPkgDownloadDirectory parameter is required! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        
+        if ($($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT") -or $NuGetPkgDownloadDirectory) {
+            #$NuGetPackageUri = "https://www.nuget.org/api/v2/package/$AssemblyName"
+            #$NuGetPackageUri = "https://api.nuget.org/v3-flatcontainer/{id-lower}/{version-lower}/{id-lower}.{version-lower}.nupkg"
+            if ($AllowPreRelease) {
+                $SearchNuGetPackageUri = "https://api-v2v3search-0.nuget.org/query?q=$AssemblyName&prerelease=true"
+            }
+            else {
+                $SearchNuGetPackageUri = "https://api-v2v3search-0.nuget.org/query?q=$AssemblyName&prerelease=false"
+            }
+            $VersionCheckPrep = $($(Invoke-RestMethod -Uri $SearchNuGetPackageUri).data | Where-Object {$_.id -eq $AssemblyName}).versions
+            $LatestVersion = $VersionCheckPrep[-1].Version
+            $LowercaseAssemblyName = $AssemblyName.ToLowerInvariant()
+            $NuGetPackageUri = "https://api.nuget.org/v3-flatcontainer/$LowercaseAssemblyName/$LatestVersion/$LowercaseAssemblyName.$LatestVersion.nupkg"
+    
+            $OutFileBaseName = "$LowercaseAssemblyName.$LatestVersion.zip"
+            $DllFileName = $OutFileBaseName -replace "zip","dll"
+    
+            if ($NuGetPkgDownloadDirectory) {
+                $NuGetPkgDownloadPath = Join-Path $NuGetPkgDownloadDirectory $OutFileBaseName
+                $NuGetPkgExtractionDirectory = Join-Path $NuGetPkgDownloadDirectory $AssemblyName
+                if (!$(Test-Path $NuGetPkgDownloadDirectory)) {
+                    $null = New-Item -ItemType Directory -Path $NuGetPkgDownloadDirectory -Force
+                }
+                if (!$(Test-Path $NuGetPkgExtractionDirectory)) {
+                    $null = New-Item -ItemType Directory -Path $NuGetPkgExtractionDirectory -Force
+                }
+            }
+        }
+        if ($($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT") -and !$NuGetPkgDownloadDirectory) {
+            $NuGetConfigContent = Get-Content $(Get-NativePath @($env:AppData, "NuGet", "nuget.config"))
+            $NuGetRepoPathCheck = $NuGetConfigContent | Select-String -Pattern '<add key="repositoryPath" value=' -ErrorAction SilentlyContinue
+            if ($NuGetRepoPathCheck -ne $null) {
+                $NuGetPackagesPath = $($($NuGetRepoPathCheck.Line.Trim() -split 'value=')[-1] -split ' ')[0] -replace '"',''
+            }
+            else {
+                $NuGetPackagesPath = Get-NativePath @($HOME, ".nuget", "packages")
+            }
+    
+            if (!$(Test-Path $NuGetPackagesPath)) {
+                $null = New-Item -ItemType Directory -Path $NuGetPackagesPath -Force
+            }
+    
+            $NuGetPkgExtractionDirectory = Get-NativePath @($NuGetPackagesPath, $AssemblyName)
+        }
+    
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            $PossibleSubDirs = @(
+                [pscustomobject]@{
+                    Preference      = 4
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.3"))
+                }
+                [pscustomobject]@{
+                    Preference      = 3
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.6"))
+                }
+                [pscustomobject]@{
+                    Preference      = 1
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard2.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 2
+                    SubDirectory    = $(Get-NativePath @("lib", "netcoreapp2.0"))
+                }
+            )
+        }
+        else {
+            $PossibleSubDirs = @(
+                [pscustomobject]@{
+                    Preference      = 8
+                    SubDirectory    = $(Get-NativePath @("lib", "net40"))
+                }
+                [pscustomobject]@{
+                    Preference      = 7
+                    SubDirectory    = $(Get-NativePath @("lib", "net45"))
+                }
+                [pscustomobject]@{
+                    Preference      = 6
+                    SubDirectory    = $(Get-NativePath @("lib", "net451"))
+                }
+                [pscustomobject]@{
+                    Preference      = 5
+                    SubDirectory    = $(Get-NativePath @("lib", "net46"))
+                }
+                [pscustomobject]@{
+                    Preference      = 4
+                    SubDirectory    = $(Get-NativePath @("lib", "net461"))
+                }
+                [pscustomobject]@{
+                    Preference      = 3
+                    SubDirectory    = $(Get-NativePath @("lib", "net462"))
+                }
+                [pscustomobject]@{
+                    Preference      = 2
+                    SubDirectory    = $(Get-NativePath @("lib", "net47"))
+                }
+                [pscustomobject]@{
+                    Preference      = 1
+                    SubDirectory    = $(Get-NativePath @("lib", "net471"))
+                }
+                [pscustomobject]@{
+                    Preference      = 15
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 14
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.1"))
+                }
+                [pscustomobject]@{
+                    Preference      = 13
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.2"))
+                }
+                [pscustomobject]@{
+                    Preference      = 12
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.3"))
+                }
+                [pscustomobject]@{
+                    Preference      = 11
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.4"))
+                }
+                [pscustomobject]@{
+                    Preference      = 10
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.5"))
+                }
+                [pscustomobject]@{
+                    Preference      = 9
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.6"))
+                }
+                [pscustomobject]@{
+                    Preference      = 16
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard2.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 17
+                    SubDirectory    = $(Get-NativePath @("lib", "netcoreapp2.0"))
+                }
+            )
+        }
+    
+        #endregion >> Prep
+    
+        
+        #region >> Main
+    
+        if ($($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT") -and !$NuGetPkgDownloadDirectory) {
+            if (!$(Get-Command nuget.exe -ErrorAction SilentlyContinue)) {
+                $NugetPath = Join-Path $($NuGetPackagesPath | Split-Path -Parent) nuget.exe
+                if(!$(Test-Path $NugetPath)) {
+                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+                }
+                $NugetDir = $NugetPath | Split-Path -Parent
+    
+                # Update PowerShell $env:Path
+                [System.Collections.Arraylist][array]$CurrentEnvPathArray = $env:Path -split ';' | Where-Object {![System.String]::IsNullOrWhiteSpace($_)} | Sort-Object | Get-Unique
+                if ($CurrentEnvPathArray -notcontains $NugetDir) {
+                    $CurrentEnvPathArray.Insert(0,$NugetDir)
+                    $env:Path = $CurrentEnvPathArray -join ';'
+                }
+                
+                # Update SYSTEM Path
+                $RegistrySystemPath = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment'
+                $CurrentSystemPath = $(Get-ItemProperty -Path $RegistrySystemPath -Name PATH).Path
+                [System.Collections.Arraylist][array]$CurrentSystemPathArray = $CurrentSystemPath -split ';' | Where-Object {![System.String]::IsNullOrWhiteSpace($_)} | Sort-Object | Get-Unique
+                if ($CurrentSystemPathArray -notcontains $NugetDir) {
+                    $CurrentSystemPathArray.Insert(0,$NugetDir)
+                    $UpdatedSystemPath = $CurrentSystemPathArray -join ';'
+                    Set-ItemProperty -Path $RegistrySystemPath -Name PATH -Value $UpdatedSystemPath
+                }   
+            }
+    
+            try {
+                $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                #$ProcessInfo.WorkingDirectory = $NuGetPackagesPath
+                $ProcessInfo.FileName = $(Get-Command nuget).Source
+                $ProcessInfo.RedirectStandardError = $true
+                $ProcessInfo.RedirectStandardOutput = $true
+                $ProcessInfo.UseShellExecute = $false
+                if ($AllowPreRelease) {
+                    $ProcessInfo.Arguments = "install $AssemblyName -PreRelease"
+                }
+                else {
+                    $ProcessInfo.Arguments = "install $AssemblyName"
+                }
+                $Process = New-Object System.Diagnostics.Process
+                $Process.StartInfo = $ProcessInfo
+                $Process.Start() | Out-Null
+                $stdout = $($Process.StandardOutput.ReadToEnd()).Trim()
+                $stderr = $($Process.StandardError.ReadToEnd()).Trim()
+                $AllOutput = $stdout + $stderr
+                $AllOutput = $AllOutput -split "`n"
+    
+                if ($stderr -match "Unable to find package") {
+                    throw
+                }
+    
+                $NuGetPkgExtractionDirectory = $(Get-ChildItem -Path $NuGetPackagesPath -Directory | Where-Object {$_.Name -eq $AssemblyName} | Sort-Object -Property CreationTime)[-1].FullName
+            }
+            catch {
+                Write-Error $_
+                Write-Error "NuGet.exe was unable to find a package called $AssemblyName! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+        if ($($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT") -or $NuGetPkgDownloadDirectory) {
+            try {
+                # Download the NuGet Package
+                if (!$Silent) {
+                    Write-Host "Downloading $AssemblyName NuGet Package to $NuGetPkgDownloadPath ..."
+                }
+                Invoke-WebRequest -Uri $NuGetPackageUri -OutFile $NuGetPkgDownloadPath
+                if (!$Silent) {
+                    Write-Host "NuGet Package has been downloaded to $NuGetPkgDownloadPath"
+                }
+            }
+            catch {
+                Write-Error "Unable to find $AssemblyName via the NuGet API! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+    
+            # Step through possble Zip File SubDirs and get the most highest available compatible version of the Assembly
+            try {
+                if (!$Silent) {
+                    Write-Host "Attempting to extract NuGet zip file $NuGetPkgDownloadPath to $NuGetPkgExtractionDirectory ..."
+                }
+                if ($(Get-ChildItem $NuGetPkgExtractionDirectory).Count -gt 1) {
+                    foreach ($item in $(Get-ChildItem $NuGetPkgExtractionDirectory)) {
+                        if ($item.Extension -ne ".zip") {
+                            $item | Remove-Item -Recurse -Force
+                        }
+                    }
+                }
+                Expand-Archive -Path $NuGetPkgDownloadPath -DestinationPath $NuGetPkgExtractionDirectory
+                if (!$Silent) {
+                    Write-Host "NuGet Package is available here: $NuGetPkgExtractionDirectory"
+                }
+            }
+            catch {
+                Write-Warning "The Unzip-File function failed with the following error:"
+                Write-Error $$_
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+    
+        [System.Collections.ArrayList]$NuGetPackageActualSubDirs = @()
+        $(Get-ChildItem -Recurse $NuGetPkgExtractionDirectory -File -Filter "*.dll").DirectoryName | foreach {
+            $null = $NuGetPackageActualSubDirs.Add($_)
+        }
+        
+        $s = [IO.Path]::DirectorySeparatorChar
+        [System.Collections.ArrayList]$FoundSubDirsPSObjects = @()
+        foreach ($pdir in $PossibleSubDirs) {
+            foreach ($adir in $NuGetPackageActualSubDirs) {
+                $IndexOfSlash = $pdir.SubDirectory.IndexOf($s)
+                $pdirToRegexPattern = {
+                    $UpdatedString = $pdir.SubDirectory.Remove($IndexOfSlash, 1)
+                    $UpdatedString.Insert($IndexOfSlash, [regex]::Escape($s))
+                }.Invoke()
+    
+                if ($adir -match $pdirToRegexPattern) {
+                    $FoundDirPSObj = [pscustomobject]@{
+                        Preference   = $pdir.Preference
+                        Directory    = $adir
+                    }
+                    $null = $FoundSubDirsPSObjects.Add($FoundDirPSObj)
+                }
+            }
+        }
+    
+        $TargetDir = $($FoundSubDirsPSObjects | Sort-Object -Property Preference)[0].Directory
+        $AssemblyPath = Get-NativePath @($TargetDir, $(Get-ChildItem $TargetDir -File -Filter "*.dll").Name)
+        
+        [pscustomobject]@{
+            NuGetPackageDirectory   = $NuGetPkgExtractionDirectory
+            AssemblyToLoad          = $AssemblyPath
+        }
+        
+        #endregion >> Main
+    
+    }
+
     #endregion >> Helper Functions
 
-    #region >> Main
+    #region >> Prep
+
+    if ($PSVersionTable.Platform -eq "Unix") {
+        # If we're on Linux, we need the Novell .Net Core library
+        try {
+            $CurrentlyLoadedAssemblies = [System.AppDomain]::CurrentDomain.GetAssemblies()
+            if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
+                $NovellDownloadDir = "$HOME/Novell.Directory.Ldap.NETStandard"
+                if (Test-Path $NovellDownloadDir) {
+                    $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
+                }
+
+                $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+
+                if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
+                    $null = Add-Type -Path $AssemblyToLoadPath
+                }
+            }
+        }
+        catch {
+            Write-Error $_
+            $global:FunctionResult = "1"
+            return
+        }
+    }
 
     try {
         $ADServerNetworkInfo = Resolve-Host -HostNameOrIP $ADServerHostNameOrIP -ErrorAction Stop
@@ -52,6 +412,10 @@ function Test-LDAP {
         return
     }
 
+    #endregion >> Prep
+
+    #region >> Main
+
     $ADServerFQDN = $ADServerNetworkInfo.FQDN
 
     $LDAPPrep = "LDAP://" + $ADServerFQDN
@@ -59,11 +423,17 @@ function Test-LDAP {
     # Try Global Catalog First - It's faster and you can execute from a different domain and
     # potentially still get results
     try {
-        $LDAP = $LDAPPrep + ":3269"
-        # This does NOT throw an error because it doen't actually try to reach out to make the connection yet
-        $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-        # This WILL throw an error
-        $Connection.Close()
+        $Port = "3269"
+        $LDAP = $LDAPPrep + ":$Port"
+        if ($PSVersionTable.Platform -eq "Unix") {
+            $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+            $Connection.Connect($ADServerFQDN,$Port)
+            $Connection.Dispose()
+        }
+        else {
+            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+            $Connection.Close()
+        }
         $GlobalCatalogConfiguredForSSL = $True
     } 
     catch {
@@ -79,9 +449,17 @@ function Test-LDAP {
     }
 
     try {
-        $LDAP = $LDAPPrep + ":3268"
-        $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-        $Connection.Close()
+        $Port = "3268"
+        $LDAP = $LDAPPrep + ":$Port"
+        if ($PSVersionTable.Platform -eq "Unix") {
+            $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+            $Connection.Connect($ADServerFQDN,$Port)
+            $Connection.Dispose()
+        }
+        else {
+            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+            $Connection.Close()
+        }
         $GlobalCatalogConfigured = $True
     } 
     catch {
@@ -98,11 +476,17 @@ function Test-LDAP {
   
     # Try the normal ports
     try {
-        $LDAP = $LDAPPrep + ":636"
-        # This does NOT throw an error because it doen't actually try to reach out to make the connection yet
-        $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-        # This WILL throw an error
-        $Connection.Close()
+        $Port = "636"
+        $LDAP = $LDAPPrep + ":$Port"
+        if ($PSVersionTable.Platform -eq "Unix") {
+            $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+            $Connection.Connect($ADServerFQDN,$Port)
+            $Connection.Dispose()
+        }
+        else {
+            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+            $Connection.Close()
+        }
         $ConfiguredForSSL = $True
     } 
     catch {
@@ -118,9 +502,17 @@ function Test-LDAP {
     }
 
     try {
-        $LDAP = $LDAPPrep + ":389"
-        $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-        $Connection.Close()
+        $Port = "389"
+        $LDAP = $LDAPPrep + ":$Port"
+        if ($PSVersionTable.Platform -eq "Unix") {
+            $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+            $Connection.Connect($ADServerFQDN,$Port)
+            $Connection.Dispose()
+        }
+        else {
+            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+            $Connection.Close()
+        }
         $Configured = $True
     }
     catch {
@@ -163,8 +555,8 @@ function Test-LDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcYvokxdVBEIODjiEhQ3anu9l
-# Irugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUZo0K4Fim92V/NCvDtpbzVO9K
+# 7kigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -221,11 +613,11 @@ function Test-LDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL4klTSPE3XVdNbk
-# n6AYwXNCsN/lMA0GCSqGSIb3DQEBAQUABIIBAF3Xbfgc7tBvBXM7yU5zHXCtu1HI
-# euAFNnIITuHxWNvA7qNuD7YNVG4vDW9tBRVOJ7S09rNqBdCgO32epcLccDDi8byQ
-# twck6kuAF3DQnrytz0k5c5ahemSqIqYn/R88sNG+HD3L+f2EAvq9sA7uCi8vG2PN
-# lByXHlntwzAb9vK/dSq4uavrelAbrENngFzrrcT8m0IzQn8Jd03FpI/xnB7jRZS0
-# pccS8dXSywP+BMOsxSrh1iWFwHBoEwsqB/3ruBjkMfHpU1n8tIgWc7yGw0d4aKBB
-# kOGgVE73LU/jue4M5AZqHdkXa4wV1m2oOaBuKRninSKpCf5fQb56cMNXGWA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKSib/5SRTD7h0aD
+# pSkYEDsIvehUMA0GCSqGSIb3DQEBAQUABIIBABR+cViAnSN3RKqYQsakYNsU3SYp
+# pIs3VNV/HLwdzBnoWaE8jEhvKBQr14jqbaagUmxwmD1rDmQRfX0EdaMurVg8aeEU
+# eu6RW9k8lzd4zEPoFcA2H/kfR1l53gm3ucfFu5hW81Vu04hTWM5zlKbSNT3SLsTk
+# kZ2eqmgKCmcSeVMdaFX38bEaLgDIxBWGb4Rpt7m5DPtZWg+y2ZzZvtpp3LoTwUER
+# RGx1Kjo5iVPaLD2RG5OUnUwJaeuRd0PjmKjuJDzIjZgRw2sZd+Xls0BIr6QcRJFj
+# DumNlKnW3CvjMTIhNRRBw/wLqWQATRwBvrU10CYKRMhHuhZpldwpfu4jTxo=
 # SIG # End signature block
