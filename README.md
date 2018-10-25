@@ -32,4 +32,4 @@ if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and
         return
     }
 }
-``
+```
