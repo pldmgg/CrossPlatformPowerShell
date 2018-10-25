@@ -13,6 +13,12 @@ function Get-ComputerObjectsInLDAP {
 
     #region >> Helper Functions
 
+    function Test-IsValidIPAddress([string]$IPAddress) {
+        [boolean]$Octets = (($IPAddress.Split(".") | Measure-Object).Count -eq 4) 
+        [boolean]$Valid  =  ($IPAddress -as [ipaddress]) -as [boolean]
+        Return  ($Valid -and $Octets)
+    }
+
     function Get-Elevation {
         if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
             [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
@@ -37,6 +43,166 @@ function Get-ComputerObjectsInLDAP {
                 return $false
             }
         }
+    }
+
+    function Resolve-Host {
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory=$True)]
+            [string]$HostNameOrIP
+        )
+    
+        #region >> Main
+    
+        $RemoteHostNetworkInfoArray = @()
+        if (!$(Test-IsValidIPAddress -IPAddress $HostNameOrIP)) {
+            try {
+                $HostNamePrep = $HostNameOrIP
+                [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                $IPv4AddressFamily = "InterNetwork"
+                $IPv6AddressFamily = "InterNetworkV6"
+    
+                $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostNamePrep)
+                $ResolutionInfo.AddressList | Where-Object {
+                    $_.AddressFamily -eq $IPv4AddressFamily
+                } | foreach {
+                    if ($RemoteHostArrayOfIPAddresses -notcontains $_.IPAddressToString) {
+                        $null = $RemoteHostArrayOfIPAddresses.Add($_.IPAddressToString)
+                    }
+                }
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostNameOrIP when treated as a Host Name (as opposed to IP Address)!"
+    
+                if ($HostNameOrIP -match "\.") {
+                    try {
+                        $HostNamePrep = $($HostNameOrIP -split "\.")[0]
+                        Write-Verbose "Trying to resolve $HostNameOrIP using only HostName: $HostNamePrep!"
+    
+                        [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                        $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostNamePrep)
+                        $ResolutionInfo.AddressList | Where-Object {
+                            $_.AddressFamily -eq $IPv4AddressFamily
+                        } | foreach {
+                            if ($RemoteHostArrayOfIPAddresses -notcontains $_.IPAddressToString) {
+                                $null = $RemoteHostArrayOfIPAddresses.Add($_.IPAddressToString)
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Verbose "Unable to resolve $HostNamePrep!"
+                    }
+                }
+            }
+        }
+        if (Test-IsValidIPAddress -IPAddress $HostNameOrIP) {
+            try {
+                $HostIPPrep = $HostNameOrIP
+                [System.Collections.ArrayList]$RemoteHostArrayOfIPAddresses = @()
+                $null = $RemoteHostArrayOfIPAddresses.Add($HostIPPrep)
+    
+                $ResolutionInfo = [System.Net.Dns]::GetHostEntry($HostIPPrep)
+    
+                [System.Collections.ArrayList]$RemoteHostFQDNs = @() 
+                $null = $RemoteHostFQDNs.Add($ResolutionInfo.HostName)
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostNameOrIP when treated as an IP Address (as opposed to Host Name)!"
+            }
+        }
+    
+        if ($RemoteHostArrayOfIPAddresses.Count -eq 0) {
+            Write-Error "Unable to determine IP Address of $HostNameOrIP! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        # At this point, we have $RemoteHostArrayOfIPAddresses...
+        [System.Collections.ArrayList]$RemoteHostFQDNs = @()
+        foreach ($HostIP in $RemoteHostArrayOfIPAddresses) {
+            try {
+                $FQDNPrep = [System.Net.Dns]::GetHostEntry($HostIP).HostName
+            }
+            catch {
+                Write-Verbose "Unable to resolve $HostIP. No PTR Record? Please check your DNS config."
+                continue
+            }
+            if ($RemoteHostFQDNs -notcontains $FQDNPrep) {
+                $null = $RemoteHostFQDNs.Add($FQDNPrep)
+            }
+        }
+    
+        if ($RemoteHostFQDNs.Count -eq 0) {
+            $null = $RemoteHostFQDNs.Add($ResolutionInfo.HostName)
+        }
+    
+        [System.Collections.ArrayList]$HostNameList = @()
+        [System.Collections.ArrayList]$DomainList = @()
+        foreach ($fqdn in $RemoteHostFQDNs) {
+            $PeriodCheck = $($fqdn | Select-String -Pattern "\.").Matches.Success
+            if ($PeriodCheck) {
+                $HostName = $($fqdn -split "\.")[0]
+                $Domain = $($fqdn -split "\.")[1..$($($fqdn -split "\.").Count-1)] -join '.'
+            }
+            else {
+                $HostName = $fqdn
+                $Domain = "Unknown"
+            }
+    
+            $null = $HostNameList.Add($HostName)
+            $null = $DomainList.Add($Domain)
+        }
+    
+        if ($RemoteHostFQDNs[0] -eq $null -and $HostNameList[0] -eq $null -and $DomainList -eq "Unknown" -and $RemoteHostArrayOfIPAddresses) {
+            [System.Collections.ArrayList]$SuccessfullyPingedIPs = @()
+            # Test to see if we can reach the IP Addresses
+            foreach ($ip in $RemoteHostArrayOfIPAddresses) {
+                try {
+                    $null = [System.Net.NetworkInformation.Ping]::new().Send($ip,1000)
+                    $null = $SuccessfullyPingedIPs.Add($ip)
+                }
+                catch {
+                    Write-Verbose "Unable to ping $ip..."
+                    continue
+                }
+            }
+        }
+    
+        $FQDNPrep = if ($RemoteHostFQDNs) {$RemoteHostFQDNs[0]} else {$null}
+        if ($FQDNPrep -match ',') {
+            $FQDN = $($FQDNPrep -split ',')[0]
+        }
+        else {
+            $FQDN = $FQDNPrep
+        }
+    
+        $DomainPrep = if ($DomainList) {$DomainList[0]} else {$null}
+        if ($DomainPrep -match ',') {
+            $Domain = $($DomainPrep -split ',')[0]
+        }
+        else {
+            $Domain = $DomainPrep
+        }
+    
+        $IPAddressList = [System.Collections.ArrayList]@($(if ($SuccessfullyPingedIPs) {$SuccessfullyPingedIPs} else {$RemoteHostArrayOfIPAddresses}))
+        $HName = if ($HostNameList) {$HostNameList[0].ToLowerInvariant()} else {$null}
+    
+        if ($SuccessfullyPingedIPs.Count -eq 0 -and !$FQDN -and !$HostName -and !$Domain) {
+            Write-Error "Unable to resolve $HostNameOrIP! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        [pscustomobject]@{
+            IPAddressList   = $IPAddressList
+            PingSuccess     = $($SuccessfullyPingedIPs.Count -gt 0)
+            FQDN            = $FQDN
+            HostName        = $HName
+            Domain          = $Domain
+        }
+    
+        #endregion >> Main
+    
     }
 
     function Install-LinuxPackage {
@@ -87,6 +253,341 @@ function Get-ComputerObjectsInLDAP {
         }
     }
 
+    function Download-NuGetPackage {
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory=$True)]
+            [string]$AssemblyName,
+    
+            [Parameter(Mandatory=$False)]
+            [string]$NuGetPkgDownloadDirectory,
+    
+            [Parameter(Mandatory=$False)]
+            [switch]$AllowPreRelease,
+    
+            [Parameter(Mandatory=$False)]
+            [switch]$Silent
+        )
+    
+        #region >> Helper Functions
+        
+        function Get-NativePath {
+            [CmdletBinding()]
+            Param( 
+                [Parameter(Mandatory=$True)]
+                [string[]]$PathAsStringArray
+            )
+        
+            $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+                $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+                
+                if ($SplitAttempt.Count -gt 1) {
+                    foreach ($obj in $SplitAttempt) {
+                        $obj
+                    }
+                }
+                else {
+                    $pathPart
+                }
+            }
+            $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
+        
+            $PathAsStringArray
+        
+        }
+        
+        #endregion >> Helper Functions
+    
+        #region >> Prep
+    
+        if ($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT" -and !$NuGetPkgDownloadDirectory) {
+            Write-Error "On this OS Platform (i.e. $($PSVersionTable.Platform)), the -NuGetPkgDownloadDirectory parameter is required! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        
+        if ($($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT") -or $NuGetPkgDownloadDirectory) {
+            #$NuGetPackageUri = "https://www.nuget.org/api/v2/package/$AssemblyName"
+            #$NuGetPackageUri = "https://api.nuget.org/v3-flatcontainer/{id-lower}/{version-lower}/{id-lower}.{version-lower}.nupkg"
+            if ($AllowPreRelease) {
+                $SearchNuGetPackageUri = "https://api-v2v3search-0.nuget.org/query?q=$AssemblyName&prerelease=true"
+            }
+            else {
+                $SearchNuGetPackageUri = "https://api-v2v3search-0.nuget.org/query?q=$AssemblyName&prerelease=false"
+            }
+            $VersionCheckPrep = $($(Invoke-RestMethod -Uri $SearchNuGetPackageUri).data | Where-Object {$_.id -eq $AssemblyName}).versions
+            $LatestVersion = $VersionCheckPrep[-1].Version
+            $LowercaseAssemblyName = $AssemblyName.ToLowerInvariant()
+            $NuGetPackageUri = "https://api.nuget.org/v3-flatcontainer/$LowercaseAssemblyName/$LatestVersion/$LowercaseAssemblyName.$LatestVersion.nupkg"
+    
+            $OutFileBaseName = "$LowercaseAssemblyName.$LatestVersion.zip"
+            $DllFileName = $OutFileBaseName -replace "zip","dll"
+    
+            if ($NuGetPkgDownloadDirectory) {
+                $NuGetPkgDownloadPath = Join-Path $NuGetPkgDownloadDirectory $OutFileBaseName
+                $NuGetPkgExtractionDirectory = Join-Path $NuGetPkgDownloadDirectory $AssemblyName
+                if (!$(Test-Path $NuGetPkgDownloadDirectory)) {
+                    $null = New-Item -ItemType Directory -Path $NuGetPkgDownloadDirectory -Force
+                }
+                if (!$(Test-Path $NuGetPkgExtractionDirectory)) {
+                    $null = New-Item -ItemType Directory -Path $NuGetPkgExtractionDirectory -Force
+                }
+            }
+        }
+        if ($($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT") -and !$NuGetPkgDownloadDirectory) {
+            $NuGetConfigContent = Get-Content $(Get-NativePath @($env:AppData, "NuGet", "nuget.config"))
+            $NuGetRepoPathCheck = $NuGetConfigContent | Select-String -Pattern '<add key="repositoryPath" value=' -ErrorAction SilentlyContinue
+            if ($NuGetRepoPathCheck -ne $null) {
+                $NuGetPackagesPath = $($($NuGetRepoPathCheck.Line.Trim() -split 'value=')[-1] -split ' ')[0] -replace '"',''
+            }
+            else {
+                $NuGetPackagesPath = Get-NativePath @($HOME, ".nuget", "packages")
+            }
+    
+            if (!$(Test-Path $NuGetPackagesPath)) {
+                $null = New-Item -ItemType Directory -Path $NuGetPackagesPath -Force
+            }
+    
+            $NuGetPkgExtractionDirectory = Get-NativePath @($NuGetPackagesPath, $AssemblyName)
+        }
+    
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            $PossibleSubDirs = @(
+                [pscustomobject]@{
+                    Preference      = 4
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.3"))
+                }
+                [pscustomobject]@{
+                    Preference      = 3
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.6"))
+                }
+                [pscustomobject]@{
+                    Preference      = 1
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard2.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 2
+                    SubDirectory    = $(Get-NativePath @("lib", "netcoreapp2.0"))
+                }
+            )
+        }
+        else {
+            $PossibleSubDirs = @(
+                [pscustomobject]@{
+                    Preference      = 8
+                    SubDirectory    = $(Get-NativePath @("lib", "net40"))
+                }
+                [pscustomobject]@{
+                    Preference      = 7
+                    SubDirectory    = $(Get-NativePath @("lib", "net45"))
+                }
+                [pscustomobject]@{
+                    Preference      = 6
+                    SubDirectory    = $(Get-NativePath @("lib", "net451"))
+                }
+                [pscustomobject]@{
+                    Preference      = 5
+                    SubDirectory    = $(Get-NativePath @("lib", "net46"))
+                }
+                [pscustomobject]@{
+                    Preference      = 4
+                    SubDirectory    = $(Get-NativePath @("lib", "net461"))
+                }
+                [pscustomobject]@{
+                    Preference      = 3
+                    SubDirectory    = $(Get-NativePath @("lib", "net462"))
+                }
+                [pscustomobject]@{
+                    Preference      = 2
+                    SubDirectory    = $(Get-NativePath @("lib", "net47"))
+                }
+                [pscustomobject]@{
+                    Preference      = 1
+                    SubDirectory    = $(Get-NativePath @("lib", "net471"))
+                }
+                [pscustomobject]@{
+                    Preference      = 15
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 14
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.1"))
+                }
+                [pscustomobject]@{
+                    Preference      = 13
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.2"))
+                }
+                [pscustomobject]@{
+                    Preference      = 12
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.3"))
+                }
+                [pscustomobject]@{
+                    Preference      = 11
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.4"))
+                }
+                [pscustomobject]@{
+                    Preference      = 10
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.5"))
+                }
+                [pscustomobject]@{
+                    Preference      = 9
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard1.6"))
+                }
+                [pscustomobject]@{
+                    Preference      = 16
+                    SubDirectory    = $(Get-NativePath @("lib", "netstandard2.0"))
+                }
+                [pscustomobject]@{
+                    Preference      = 17
+                    SubDirectory    = $(Get-NativePath @("lib", "netcoreapp2.0"))
+                }
+            )
+        }
+    
+        #endregion >> Prep
+    
+        
+        #region >> Main
+    
+        if ($($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT") -and !$NuGetPkgDownloadDirectory) {
+            if (!$(Get-Command nuget.exe -ErrorAction SilentlyContinue)) {
+                $NugetPath = Join-Path $($NuGetPackagesPath | Split-Path -Parent) nuget.exe
+                if(!$(Test-Path $NugetPath)) {
+                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+                }
+                $NugetDir = $NugetPath | Split-Path -Parent
+    
+                # Update PowerShell $env:Path
+                [System.Collections.Arraylist][array]$CurrentEnvPathArray = $env:Path -split ';' | Where-Object {![System.String]::IsNullOrWhiteSpace($_)} | Sort-Object | Get-Unique
+                if ($CurrentEnvPathArray -notcontains $NugetDir) {
+                    $CurrentEnvPathArray.Insert(0,$NugetDir)
+                    $env:Path = $CurrentEnvPathArray -join ';'
+                }
+                
+                # Update SYSTEM Path
+                $RegistrySystemPath = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment'
+                $CurrentSystemPath = $(Get-ItemProperty -Path $RegistrySystemPath -Name PATH).Path
+                [System.Collections.Arraylist][array]$CurrentSystemPathArray = $CurrentSystemPath -split ';' | Where-Object {![System.String]::IsNullOrWhiteSpace($_)} | Sort-Object | Get-Unique
+                if ($CurrentSystemPathArray -notcontains $NugetDir) {
+                    $CurrentSystemPathArray.Insert(0,$NugetDir)
+                    $UpdatedSystemPath = $CurrentSystemPathArray -join ';'
+                    Set-ItemProperty -Path $RegistrySystemPath -Name PATH -Value $UpdatedSystemPath
+                }   
+            }
+    
+            try {
+                $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                #$ProcessInfo.WorkingDirectory = $NuGetPackagesPath
+                $ProcessInfo.FileName = $(Get-Command nuget).Source
+                $ProcessInfo.RedirectStandardError = $true
+                $ProcessInfo.RedirectStandardOutput = $true
+                $ProcessInfo.UseShellExecute = $false
+                if ($AllowPreRelease) {
+                    $ProcessInfo.Arguments = "install $AssemblyName -PreRelease"
+                }
+                else {
+                    $ProcessInfo.Arguments = "install $AssemblyName"
+                }
+                $Process = New-Object System.Diagnostics.Process
+                $Process.StartInfo = $ProcessInfo
+                $Process.Start() | Out-Null
+                $stdout = $($Process.StandardOutput.ReadToEnd()).Trim()
+                $stderr = $($Process.StandardError.ReadToEnd()).Trim()
+                $AllOutput = $stdout + $stderr
+                $AllOutput = $AllOutput -split "`n"
+    
+                if ($stderr -match "Unable to find package") {
+                    throw
+                }
+    
+                $NuGetPkgExtractionDirectory = $(Get-ChildItem -Path $NuGetPackagesPath -Directory | Where-Object {$_.Name -eq $AssemblyName} | Sort-Object -Property CreationTime)[-1].FullName
+            }
+            catch {
+                Write-Error $_
+                Write-Error "NuGet.exe was unable to find a package called $AssemblyName! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+        if ($($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT") -or $NuGetPkgDownloadDirectory) {
+            try {
+                # Download the NuGet Package
+                if (!$Silent) {
+                    Write-Host "Downloading $AssemblyName NuGet Package to $NuGetPkgDownloadPath ..."
+                }
+                Invoke-WebRequest -Uri $NuGetPackageUri -OutFile $NuGetPkgDownloadPath
+                if (!$Silent) {
+                    Write-Host "NuGet Package has been downloaded to $NuGetPkgDownloadPath"
+                }
+            }
+            catch {
+                Write-Error "Unable to find $AssemblyName via the NuGet API! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+    
+            # Step through possble Zip File SubDirs and get the most highest available compatible version of the Assembly
+            try {
+                if (!$Silent) {
+                    Write-Host "Attempting to extract NuGet zip file $NuGetPkgDownloadPath to $NuGetPkgExtractionDirectory ..."
+                }
+                if ($(Get-ChildItem $NuGetPkgExtractionDirectory).Count -gt 1) {
+                    foreach ($item in $(Get-ChildItem $NuGetPkgExtractionDirectory)) {
+                        if ($item.Extension -ne ".zip") {
+                            $item | Remove-Item -Recurse -Force
+                        }
+                    }
+                }
+                Expand-Archive -Path $NuGetPkgDownloadPath -DestinationPath $NuGetPkgExtractionDirectory
+                if (!$Silent) {
+                    Write-Host "NuGet Package is available here: $NuGetPkgExtractionDirectory"
+                }
+            }
+            catch {
+                Write-Warning "The Unzip-File function failed with the following error:"
+                Write-Error $$_
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+    
+        [System.Collections.ArrayList]$NuGetPackageActualSubDirs = @()
+        $(Get-ChildItem -Recurse $NuGetPkgExtractionDirectory -File -Filter "*.dll").DirectoryName | foreach {
+            $null = $NuGetPackageActualSubDirs.Add($_)
+        }
+        
+        $s = [IO.Path]::DirectorySeparatorChar
+        [System.Collections.ArrayList]$FoundSubDirsPSObjects = @()
+        foreach ($pdir in $PossibleSubDirs) {
+            foreach ($adir in $NuGetPackageActualSubDirs) {
+                $IndexOfSlash = $pdir.SubDirectory.IndexOf($s)
+                $pdirToRegexPattern = {
+                    $UpdatedString = $pdir.SubDirectory.Remove($IndexOfSlash, 1)
+                    $UpdatedString.Insert($IndexOfSlash, [regex]::Escape($s))
+                }.Invoke()
+    
+                if ($adir -match $pdirToRegexPattern) {
+                    $FoundDirPSObj = [pscustomobject]@{
+                        Preference   = $pdir.Preference
+                        Directory    = $adir
+                    }
+                    $null = $FoundSubDirsPSObjects.Add($FoundDirPSObj)
+                }
+            }
+        }
+    
+        $TargetDir = $($FoundSubDirsPSObjects | Sort-Object -Property Preference)[0].Directory
+        $AssemblyPath = Get-NativePath @($TargetDir, $(Get-ChildItem $TargetDir -File -Filter "*.dll").Name)
+        
+        [pscustomobject]@{
+            NuGetPackageDirectory   = $NuGetPkgExtractionDirectory
+            AssemblyToLoad          = $AssemblyPath
+        }
+        
+        #endregion >> Main
+    
+    }
+    
     function Get-DomainName {
         [CmdletBinding()]
         Param()
@@ -422,36 +923,71 @@ function Get-ComputerObjectsInLDAP {
             [Parameter(Mandatory=$True)]
             [string]$ADServerHostNameOrIP
         )
+
+        #region >> Prep
     
-        # Make sure you CAN resolve $ADServerHostNameOrIP AND that we can get FQDN
-        try {
-            $ADServerNetworkInfo = [System.Net.Dns]::GetHostEntry($ADServerHostNameOrIP)
-            if ($ADServerNetworkInfo.HostName -notmatch "\.") {
-                $IP = $ADServerNetworkInfo.AddressList[0].IPAddressToString
-                $ADServerNetworkInfo = [System.Net.Dns]::GetHostEntry($IP)
-                if ($ADServerNetworkInfo.HostName -notmatch "\.") {
-                    throw "Can't resolve $ADServerHostNameOrIP FQDN! Halting!"
+        if ($PSVersionTable.Platform -eq "Unix") {
+            # If we're on Linux, we need the Novell .Net Core library
+            try {
+                $CurrentlyLoadedAssemblies = [System.AppDomain]::CurrentDomain.GetAssemblies()
+                if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
+                    $NovellDownloadDir = "$HOME/Novell.Directory.Ldap.NETStandard"
+                    if (Test-Path $NovellDownloadDir) {
+                        $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
+                    }
+    
+                    $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                    $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+    
+                    if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
+                        $null = Add-Type -Path $AssemblyToLoadPath
+                    }
                 }
             }
+            catch {
+                Write-Error $_
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+    
+        try {
+            $ADServerNetworkInfo = Resolve-Host -HostNameOrIP $ADServerHostNameOrIP -ErrorAction Stop
         }
         catch {
-            Write-Error $_
+            Write-Error "Unable to resolve $ADServerHostNameOrIP! Halting!"
             $global:FunctionResult = "1"
             return
         }
     
-        $ADServerFQDN = $ADServerNetworkInfo.HostName
+        if (!$ADServerNetworkInfo.FQDN) {
+            Write-Error "Unable to determine FQDN of $ADServerHostNameOrIP! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        #endregion >> Prep
+    
+        #region >> Main
+    
+        $ADServerFQDN = $ADServerNetworkInfo.FQDN
     
         $LDAPPrep = "LDAP://" + $ADServerFQDN
     
         # Try Global Catalog First - It's faster and you can execute from a different domain and
         # potentially still get results
         try {
-            $LDAP = $LDAPPrep + ":3269"
-            # This does NOT throw an error because it doen't actually try to reach out to make the connection yet
-            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-            # This WILL throw an error
-            $Connection.Close()
+            $Port = "3269"
+            $LDAP = $LDAPPrep + ":$Port"
+            if ($PSVersionTable.Platform -eq "Unix") {
+                $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+                $Connection.Connect($ADServerFQDN,$Port)
+                $Connection.Dispose()
+            }
+            else {
+                $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+                $Connection.Close()
+            }
             $GlobalCatalogConfiguredForSSL = $True
         } 
         catch {
@@ -467,9 +1003,17 @@ function Get-ComputerObjectsInLDAP {
         }
     
         try {
-            $LDAP = $LDAPPrep + ":3268"
-            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-            $Connection.Close()
+            $Port = "3268"
+            $LDAP = $LDAPPrep + ":$Port"
+            if ($PSVersionTable.Platform -eq "Unix") {
+                $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+                $Connection.Connect($ADServerFQDN,$Port)
+                $Connection.Dispose()
+            }
+            else {
+                $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+                $Connection.Close()
+            }
             $GlobalCatalogConfigured = $True
         } 
         catch {
@@ -486,11 +1030,17 @@ function Get-ComputerObjectsInLDAP {
       
         # Try the normal ports
         try {
-            $LDAP = $LDAPPrep + ":636"
-            # This does NOT throw an error because it doen't actually try to reach out to make the connection yet
-            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-            # This WILL throw an error
-            $Connection.Close()
+            $Port = "636"
+            $LDAP = $LDAPPrep + ":$Port"
+            if ($PSVersionTable.Platform -eq "Unix") {
+                $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+                $Connection.Connect($ADServerFQDN,$Port)
+                $Connection.Dispose()
+            }
+            else {
+                $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+                $Connection.Close()
+            }
             $ConfiguredForSSL = $True
         } 
         catch {
@@ -506,9 +1056,17 @@ function Get-ComputerObjectsInLDAP {
         }
     
         try {
-            $LDAP = $LDAPPrep + ":389"
-            $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
-            $Connection.Close()
+            $Port = "389"
+            $LDAP = $LDAPPrep + ":$Port"
+            if ($PSVersionTable.Platform -eq "Unix") {
+                $Connection = [Novell.Directory.Ldap.LdapConnection]::new()
+                $Connection.Connect($ADServerFQDN,$Port)
+                $Connection.Dispose()
+            }
+            else {
+                $Connection = [System.DirectoryServices.DirectoryEntry]($LDAP)
+                $Connection.Close()
+            }
             $Configured = $True
         }
         catch {
@@ -544,8 +1102,10 @@ function Get-ComputerObjectsInLDAP {
             ConfiguredForSSL636                 = if ($ConfiguredForSSL) {$True} else {$False}
             PortsThatWork                       = $PortsThatWork
         }
+    
+        #endregion >> Main
     }
-
+    
     #endregion >> Helper Functions
 
 
@@ -750,8 +1310,8 @@ function Get-ComputerObjectsInLDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUYomuKXDGg6Oaw4EXFoIC6qiu
-# v/Wgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUOVVKTbtC1P4pY+hTVGf6RCHE
+# FUKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -808,11 +1368,11 @@ function Get-ComputerObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFTt/pFT6gKr/8sX
-# YRYbePucdYHPMA0GCSqGSIb3DQEBAQUABIIBAIR+CJTusANs9E0wFNMYvetsZ5Ks
-# RjT2dihZdYIQ9dpqMok31AMfAgTr18gwfZLWmaUMsc/XyIms4j2vLoLQfUR1jPD3
-# 65/IckKRdGIoNoctuSCHSMrQcm74vTLhAddmNrFlf7j5za0H7EMT4U13p4/N/fN3
-# FNpqzlZysULTzP4IeFGaiBmQxVFyPHTUHLsE2NZu1txOeIHcLdKaZjd66O7yiHCG
-# S1nTqiysZjOrWdvHCYZwlDxNGdNl8sDq4pxdMBj323qG52SKyrZ2Eckh80yh2Gxt
-# i2iErnF1WmYF9ZQY2CCP9p+s6xqv3KP2fjOyIcp6pVKRCzwDQKlUwuZOnS0=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNEwhgyfjbDSmas1
+# nHZkYO/JzZIJMA0GCSqGSIb3DQEBAQUABIIBAJP0sI+xYCzC1Qw0Rz9da2rE2YAB
+# HcpxTcv5Y/D0VK/vlEycP69BfpCSFq/VwujqeqnLNiMWt4AtiW2tmZ2V1xxk8fit
+# np09jkHmAueMwHw+tqs+2MiwTTk3AEoP2gfU4C8QEpo5nN6KjNxWtkCwWHyeN8q6
+# VTXJ0AnJY6szPyn/ms+A1KfYV6AZPj1eWtt1YQE3SzbZvuHK4Wxu2PUvTOtgfnNm
+# 34FvQPo++XqIfXdPAiJX5m3pXiW8I90RUwSuSQstkvZC+a1TgDTuRUd48kd2Cdqj
+# KIpTAyVdVUTNGSLoIE/RBySd10+T6Uwy6TkdQJbL8w/CIKj7cMSDYGEt48k=
 # SIG # End signature block
