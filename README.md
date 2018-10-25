@@ -4,10 +4,17 @@ A collection of PowerShell functions that work on Windows Powershell 5.1 and Pow
 
 ## Getting Started
 
-Download the function you're interested in to a file of the same name. Then, simply dotsource it:
+Download the function you're interested in to a file of the same name. Then, simply dotsource it and use it:
 
 ```powershell
-. ./<NameOfFunction>.ps1
+PS C:\Users\zeroadmin> . ./Get-DomainController.ps1
+PS C:\Users\zeroadmin> Get-DomainController
+
+PS C:\Users\zeroadmin> Get-DomainController
+
+FoundDomainControllers                 PrimaryDomainController
+----------------------                 -----------------------
+{ZeroDC01.zero.lab, ZeroDC02.zero.lab} ZeroDC01.zero.lab
 ```
 
 ## IMPORTANT NOTE
