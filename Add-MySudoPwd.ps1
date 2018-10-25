@@ -43,6 +43,102 @@ function Add-MySudoPwd {
         }
     }
 
+    function Get-MySudoStatus {
+        [CmdletBinding()]
+        Param()
+    
+        #region >> Prep
+    
+        if (Get-Elevation) {
+            Write-Error "The Get-MySudoStatus function cannot be run as root! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    
+        # On Linux, under a Domain Account, 'whoami' returns something like: zeroadmin@zero.lab
+        # On Linux, under a Local Account, 'whoami' returns something like: vagrant
+        # On Windows under a Domain Account, 'whoami' returns something like: zero\zeroadmin
+        # On Windows under a Local Account, 'whoami' returns something like: pdadmin
+        $UserName = whoami
+        if (!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") {
+            if ($UserName -match '\\') {
+                $DomainNameShort = $($UserName -split '\\')[0]
+                $UserNameShort = $($UserName -split '\\')[-1]
+            }
+            else {
+                $UserNameShort = $UserName
+            }
+        }
+        elseif ($PSVersionTable.Platform -eq "Unix" -or $PSVersionTable.OS -match "Darwin") {
+            if ($UserName -match '@') {
+                $DomainName = $($UserName -split "@")[-1]
+                $DomainNameShort = $($DomainName -split '\.')[0]
+                $UserNameShort = $($UserName -split "@")[0]
+            }
+            else {
+                $UserNameShort = $UserName
+            }
+        }
+    
+        #endregion >> Prep
+    
+        #region >> Main
+    
+        $PSVerTablePwshBytes = [System.Text.Encoding]::Unicode.GetBytes('$PSVersionTable')
+        $EncodedCommand = [Convert]::ToBase64String($PSVerTablePwshBytes)
+    
+        [System.Collections.ArrayList]$CheckSudoStatusScriptPrep = @(
+            $('prompt=$(sudo -n pwsh -EncodedCommand {0} 2>&1)' -f $EncodedCommand)
+            $('if [ $? -eq 0 ]; then echo {0}; elif echo $prompt | grep -q {1}; then echo {2}; else echo {3}; fi' -f "'NoPasswordPrompt'","'^sudo'","'PasswordPrompt'","'NoSudoPrivileges'")
+        )
+        $CheckSudoStatusScript = $CheckSudoStatusScriptPrep -join '; '
+        $Output = bash -c "$CheckSudoStatusScript"
+        
+        if ($Output -match 'NoPasswordPrompt') {
+            $FinalOutput = [pscustomobject]@{
+                HasSudoPrivileges   = $True
+                PasswordPrompt      = $False
+                IsDomainAccount     = if ($DomainName -or $DomainNameShort) {$True} else {$False}
+                DomainInfo          = [pscustomobject]@{
+                    DomainName  = $DomainName
+                    DomainNameShort = $DomainNameShort
+                    UserNameShort = $UserNameShort
+                }
+                BashOutput          = $Output
+            }
+        }
+        elseif ($Output -match 'PasswordPrompt') {
+            $FinalOutput = [pscustomobject]@{
+                HasSudoPrivileges   = $True
+                PasswordPrompt      = $True
+                IsDomainAccount     = if ($DomainName -or $DomainNameShort) {$True} else {$False}
+                DomainInfo          = [pscustomobject]@{
+                    DomainName  = $DomainName
+                    DomainNameShort = $DomainNameShort
+                    UserNameShort = $UserNameShort
+                }
+                BashOutput          = $Output
+            }
+        }
+        elseif ($Output -match 'NoSudoPrivileges') {
+            $FinalOutput = [pscustomobject]@{
+                HasSudoPrivileges   = $False
+                PasswordPrompt      = $False
+                IsDomainAccount     = if ($DomainName -or $DomainNameShort) {$True} else {$False}
+                DomainInfo          = [pscustomobject]@{
+                    DomainName  = $DomainName
+                    DomainNameShort = $DomainNameShort
+                    UserNameShort = $UserNameShort
+                }
+                BashOutput          = $Output
+            }
+        }
+    
+        $FinalOutput | ConvertTo-Json
+    
+        #endregion >> Main
+    }
+
     #endregion >> Helper Functions
 
 
@@ -143,8 +239,8 @@ function Add-MySudoPwd {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5sPbMZQr7FjkHWtrgQoe6Sjv
-# pp6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU+dnF1nGYxdEXakEW4mV0Otev
+# btWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -201,11 +297,11 @@ function Add-MySudoPwd {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHVnrnnMPPceRbdH
-# aXXNOcI+KnH5MA0GCSqGSIb3DQEBAQUABIIBAB6p979jOSDdTqedObEGcS3Er5yM
-# C9v8Dilkzvu5aNY+MNL9XonRgihIjFj8JijPbJnolHKhkrnWYei1d2JE1Au033Yg
-# heSrVMEpKvj0lRv/NgUkb4d6YbOECAYuufge0TrmcpNTqHoXWEiB40+POXt6KYPh
-# psKPdJCCa+ATR5sjPLAToCqQBgDT9l7MdwveL0n91rHATmOy6UqVGMUhS9y3hIXx
-# Pwxk/glPJb0CN3hkS/9poKiOgbKVzMd0Z5wQ+1wKm0iyBF1WVEQyxAMgQGqoXeMr
-# 99H2Db7aJg66D7tEPegXuo16o8L1paUVkvVtL7IvxeK7Aw58urBaaGUkWJQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFC7t4W9bM+gtwbyo
+# EsGNxTEdlUOlMA0GCSqGSIb3DQEBAQUABIIBACmSLrJRXTs/R0ktumbsX1F/XCR9
+# Xv4zATgF0DNucUKhuZDhShxNLqWj9U9kjQ/w5NadvT8TD+KQbDu2cEH96xMU9Ukl
+# 7Ln1gAy/vn9gLWgAeTJq+6Jo0iGiOPQuB7KrFSjwnOziKJhUlwdqtjh9/emhDjOM
+# sBQwQwOgnIFIFBGw9tzUTVt+gfkWpEelskIW49c8ttpqzXbk7ooppibZ5xjXx256
+# iEhb9XbuXhnOVdDxoOhShY8CD0Vp/9xPpE/qCawjdOkgae16BXjrkqjI8ccMrEdN
+# 2929J/0Ie3tCKx63T6t0o7anX+YIu+/Q6xOA2GzJ/SI6YHI6gcnickxgm/k=
 # SIG # End signature block

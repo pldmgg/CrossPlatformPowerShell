@@ -5,24 +5,54 @@ function Test-LDAP {
         [string]$ADServerHostNameOrIP
     )
 
-    # Make sure you CAN resolve $ADServerHostNameOrIP AND that we can get FQDN
-    try {
-        $ADServerNetworkInfo = [System.Net.Dns]::GetHostEntry($ADServerHostNameOrIP)
-        if ($ADServerNetworkInfo.HostName -notmatch "\.") {
-            $IP = $ADServerNetworkInfo.AddressList[0].IPAddressToString
-            $ADServerNetworkInfo = [System.Net.Dns]::GetHostEntry($IP)
-            if ($ADServerNetworkInfo.HostName -notmatch "\.") {
-                throw "Can't resolve $ADServerHostNameOrIP FQDN! Halting!"
+    #region >> Helper Functions
+
+    function Get-Elevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
             }
         }
     }
+
+    #endregion >> Helper Functions
+
+    #region >> Main
+
+    try {
+        $ADServerNetworkInfo = Resolve-Host -HostNameOrIP $ADServerHostNameOrIP -ErrorAction Stop
+    }
     catch {
-        Write-Error $_
+        Write-Error "Unable to resolve $HostName! Halting!"
         $global:FunctionResult = "1"
         return
     }
 
-    $ADServerFQDN = $ADServerNetworkInfo.HostName
+    if (!$ADServerNetworkInfo.FQDN) {
+        Write-Error "Unable to determine FQDN of $ADServerHostNameOrIP! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    $ADServerFQDN = $ADServerNetworkInfo.FQDN
 
     $LDAPPrep = "LDAP://" + $ADServerFQDN
 
@@ -126,13 +156,15 @@ function Test-LDAP {
         ConfiguredForSSL636                 = if ($ConfiguredForSSL) {$True} else {$False}
         PortsThatWork                       = $PortsThatWork
     }
+
+    #endregion >> Main
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUXX2exDkRZDnEkbPr8qM1gasV
-# kxqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcYvokxdVBEIODjiEhQ3anu9l
+# Irugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -189,11 +221,11 @@ function Test-LDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEs5XBxq6QjXxKRk
-# gEQjSynISjTQMA0GCSqGSIb3DQEBAQUABIIBAK4OlAviV4Tcu9/401KzFdVjR0LH
-# vDcID4/GDeOTwmWZWPYdfWT6ekpIL+pMs0lKXTFjya29ITivmWA58q9pO3bkcwA3
-# raqsxRyBJaK449HcA2Cvv8+wIayaY+OyJs6mg26nAY3dyUSvGQVszZnYGg5KiOER
-# DZxHoY6GR9SjFIcOORVSPo13uATuqHr9mOYPPMwHVrToKmgR/jFKJYhY0x4nveaj
-# okTBwWc0uPLKYsOGytNEqsGDLT16+cRDl7pat5QiWORtyFrwg1/lnEAG5ST1UUkt
-# 5eF9bf8nYnBY96/UNQU5tTnluKa7+0yjkKvSTBaj7RvpFvzdCxssaHQtc3U=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL4klTSPE3XVdNbk
+# n6AYwXNCsN/lMA0GCSqGSIb3DQEBAQUABIIBAF3Xbfgc7tBvBXM7yU5zHXCtu1HI
+# euAFNnIITuHxWNvA7qNuD7YNVG4vDW9tBRVOJ7S09rNqBdCgO32epcLccDDi8byQ
+# twck6kuAF3DQnrytz0k5c5ahemSqIqYn/R88sNG+HD3L+f2EAvq9sA7uCi8vG2PN
+# lByXHlntwzAb9vK/dSq4uavrelAbrENngFzrrcT8m0IzQn8Jd03FpI/xnB7jRZS0
+# pccS8dXSywP+BMOsxSrh1iWFwHBoEwsqB/3ruBjkMfHpU1n8tIgWc7yGw0d4aKBB
+# kOGgVE73LU/jue4M5AZqHdkXa4wV1m2oOaBuKRninSKpCf5fQb56cMNXGWA=
 # SIG # End signature block

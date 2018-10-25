@@ -1,38 +1,33 @@
-[![Build status](https://ci.appveyor.com/api/projects/status/github/pldmgg/=master&svg=true)](https://ci.appveyor.com/project/pldmgg/sudo/branch/master)
-
-
 # CrossPlatformPowerShell
-<Synopsis>
+
+A collection of PowerShell functions that work on Windows Powershell 5.1 and PowerShell Core (Windows, Linux, and MacOS)
 
 ## Getting Started
 
-```powershell
-# One time setup
-    # Download the repository
-    # Unblock the zip
-    # Extract the CrossPlatformPowerShell folder to a module path (e.g. $env:USERPROFILE\Documents\WindowsPowerShell\Modules\)
-# Or, with PowerShell 5 or later or PowerShellGet:
-    Install-Module CrossPlatformPowerShell
-
-# Import the module.
-    Import-Module CrossPlatformPowerShell    # Alternatively, Import-Module <PathToModuleFolder>
-
-# Get commands in the module
-    Get-Command -Module CrossPlatformPowerShell
-
-# Get help
-    Get-Help <CrossPlatformPowerShell Function> -Full
-    Get-Help about_CrossPlatformPowerShell
-```
-
-## Examples
-
-### Scenario 1
+Download the function you're interested to a file of the same name. Then, simply dotsource it:
 
 ```powershell
-powershell code
+. ./<NameOfFunction>.ps1
 ```
 
-## Notes
+IMPORTANT NOTE: On Windows, using PowerShell Core, some functions depend on the funcitons in the "Helper" folder. Simply place the "Helper" folder in the same directory as the function you would like to use. Functions that require these Helper functions will start with the following code:
 
-* PSGallery: 
+```powershell
+if ($(!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") -and $PSVersionTable.PSEdition -eq "Core") {
+    try {
+        $HelperFunctions = Get-ChildItem -Path $(Join-Path $PSScriptRoot "Helpers") -File -ErrorAction Stop
+        foreach ($FileItem in $HelperFunctions) {
+            . $FileItem.FullName
+        }
+        $ModuleDependenciesMap = InvokeModuleDependencies
+    }
+    catch {
+        Write-Error $_
+        $ErrMsg = "The Get-LocalGroupAndUsers function requires a Helper functions folder containing all functions located here: " +
+        "https://github.com/pldmgg/CrossPlatformPowerShell/tree/master/Helpers" +
+        "`nPlease make sure the Helpers folder is in the same directory as the Get-LocalGroupAndUsers function. Halting!"
+        Write-Error $ErrMsg
+        return
+    }
+}
+``

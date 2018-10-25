@@ -8,22 +8,28 @@ function Install-LinuxPackage {
         [string]$CommandName
     )
 
+    if (!$PSVersionTable.Platform -eq "Unix") {
+        Write-Error "This function is meant for use on Linux! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
     if (!$(command -v $CommandName)) {
         foreach ($PackageName in $PossiblePackageNames) {
             if ($(command -v pacman)) {
-                $null = pacman -S $PackageName --noconfirm *> $null
+                $null = sudo pacman -S $PackageName --noconfirm *> $null
             }
             elseif ($(command -v yum)) {
-                $null = yum -y install $PackageName *> $null
+                $null = sudo yum -y install $PackageName *> $null
             }
             elseif ($(command -v dnf)) {
-                $null = dnf -y install $PackageName *> $null
+                $null = sudo dnf -y install $PackageName *> $null
             }
             elseif ($(command -v apt)) {
-                $null = apt-get -y install $PackageName *> $null
+                $null = sudo apt-get -y install $PackageName *> $null
             }
             elseif ($(command -v zypper)) {
-                $null = zypper install $PackageName --non-interactive *> $null
+                $null = sudo zypper install $PackageName --non-interactive *> $null
             }
 
             if ($(command -v $CommandName)) {
@@ -49,8 +55,8 @@ function Install-LinuxPackage {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUxZXjBLU5lI/o4E1w514rTPv8
-# Ygygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUPfnkAhXSwaRMpgDXUgKadPFc
+# 27Sgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -107,11 +113,11 @@ function Install-LinuxPackage {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKvTRpRUcJ+wcSAW
-# cNa4LVZoGC3ZMA0GCSqGSIb3DQEBAQUABIIBALACTCWvMNXP0EvNOIuibNM62rOU
-# kPQ/Av2N8nSpXoF5Dwyi0CGSqppwF5P1oppk0LrLWK/TcFozFwvIASG9U3UDQrLy
-# RGde6auI0er/rrmri8m3Qt44nSh8SFciFXoE1fUAL8do6XXetLeX4R3+qoO6w2jM
-# EQNYMAaYns4CXRbxevS9Mr9I9AVPIXFv80wum0unRu/7a42vjpOQxO6QgxqRg5N3
-# xNrp5fCLiwZo0n5XKvIYWyhbU7hiQbqTu2wl1CaV1/0erj7dEdZ5k0E+m4OEONe/
-# 1sh3dI1s2gXr1dy3HwQpo3UwjyGRQFitsaW1PeKxRNVaP/xUB6YtPnfiJtY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCvKadv14pweVhJk
+# eQg9eSjdvu7AMA0GCSqGSIb3DQEBAQUABIIBALLmLhEZAiB2WBGAIYAHef2VLOoJ
+# lFfPYf9KMwxTt6Q/Pe/PcIPQYD+MBhP5t92LXijsRD/CZR/TkGdvkct/R+C9DA1F
+# TZOz9Gn5ApqwxcSZ/VAiDbHlVskdeMku5uhJ8sKVMS0I8PCx/lUkliVy75sRSD44
+# uyjx0s3Xui6DZrtBrFu6tFgNUitwfgJu2QGPd1QHqtcCHhMNzlkMgJUuSdha9ID/
+# OJyM+Vl132QWXI7Yu33GG5cG39ysYRyjH9MAWxjnedy0h3aulJ7VEQb7xXiSB/4t
+# wwmEd+pmvXqQHlyzUo9b2nahRj16fNXfsm60dE99vz3tj8zUxNlbQaTPcBU=
 # SIG # End signature block

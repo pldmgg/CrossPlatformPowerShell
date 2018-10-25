@@ -109,17 +109,93 @@ function New-SSHKey {
         [string]$RemoteHostUserName
     )
 
+    #region >> Helper Functions
+
+    function Get-Elevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+    }
+
+    function Install-LinuxPackage {
+        [CmdletBinding()]
+        Param (
+            [Parameter(Mandatory=$True)]
+            [string[]]$PossiblePackageNames,
+    
+            [Parameter(Mandatory=$True)]
+            [string]$CommandName
+        )
+    
+        if (!$(command -v $CommandName)) {
+            foreach ($PackageName in $PossiblePackageNames) {
+                if ($(command -v pacman)) {
+                    $null = pacman -S $PackageName --noconfirm *> $null
+                }
+                elseif ($(command -v yum)) {
+                    $null = yum -y install $PackageName *> $null
+                }
+                elseif ($(command -v dnf)) {
+                    $null = dnf -y install $PackageName *> $null
+                }
+                elseif ($(command -v apt)) {
+                    $null = apt-get -y install $PackageName *> $null
+                }
+                elseif ($(command -v zypper)) {
+                    $null = zypper install $PackageName --non-interactive *> $null
+                }
+    
+                if ($(command -v $CommandName)) {
+                    break
+                }
+            }
+    
+            if (!$(command -v $CommandName)) {
+                Write-Error "Unable to find the command $CommandName! Install unsuccessful! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+            else {
+                Write-Host "$PackageName was successfully installed!" -ForegroundColor Green
+            }
+        }
+        else {
+            Write-Warning "The command $CommandName is already available!"
+            return
+        }
+    }
+
+    #endregion >> Helper Functions
+
+
     #region >> Prep
 
-    if ($PSVersionTable.Platform -eq "Unix" -or $PSVersionTable.OS -match "Darwin" -and $env:SudoPwdPrompt) {
-        if (GetElevation) {
-            Write-Error "You should not be running the VaultServer Module as root! Halting!"
+    if ($PSVersionTable.Platform -eq "Unix" -or $PSVersionTable.OS -match "Darwin") {
+        if (Get-Elevation) {
+            Write-Error "You cannot run the $($PSCmdlet.MyInvocation.MyCommand) function as root! Halting!"
             $global:FunctionResult = "1"
             return
         }
-        RemoveMySudoPwd
-        NewCronToAddSudoPwd
-        $env:SudoPwdPrompt = $False
     }
 
     if (!$PSVersionTable.Platform -or $PSVersionTable.Platform -eq "Win32NT") {
@@ -160,7 +236,7 @@ function New-SSHKey {
             [System.Collections.ArrayList]$FailedInstalls = @()
             if ($CommandsNotPresent -contains "echo") {
                 try {
-                    $null = InstallLinuxPackage -PossiblePackageNames "coreutils" -CommandName "echo"
+                    $null = Install-LinuxPackage -PossiblePackageNames "coreutils" -CommandName "echo"
                 }
                 catch {
                     $null = $FailedInstalls.Add("coreutils")
@@ -168,7 +244,7 @@ function New-SSHKey {
             }
             if ($CommandsNotPresent -contains "expect") {
                 try {
-                    $null = InstallLinuxPackage -PossiblePackageNames "expect" -CommandName "expect"
+                    $null = Install-LinuxPackage -PossiblePackageNames "expect" -CommandName "expect"
                 }
                 catch {
                     $null = $FailedInstalls.Add("expect")
@@ -836,8 +912,8 @@ function New-SSHKey {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUpZe2d5Vk406FG4dTIt8mmtbW
-# y8ygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUz9q/t4JCFPP16y1kEN8eAk/J
+# J86gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -894,11 +970,11 @@ function New-SSHKey {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCCHiIhWBy7Y9bKK
-# dDBriRQCdWWYMA0GCSqGSIb3DQEBAQUABIIBACRSiNypQmy5h9aLB/kEbhz1f9zz
-# gVVkSL2T2A6UKO2cTlnG9jjXfSIrVbmpQe7TEh0sdUrmc4icASZXFRCMo+Yvi5/l
-# 8OJOB7rH2C0wFqHuJhszxeyDS/qMaSeobjTIF73eIVlFpJsjUbW1FVW9Bxx6afga
-# 0dm2fLowV0QgMJRpVgcBWEkxPCDsXbyhVWAifYwpKLVqNuvghh9sJbEGrwBCe8z7
-# kotFquwLcMWdWa6OGhBo7VuDUMyfSyEIYEvnjfsd9KrkwzuT2BZvgYWxVapsqv/c
-# s/7FoXzGoEk5VfS+CzIPSgFTgtz0ogKLA7VQ2tgezvZqwPn+r8eClQtUQ6s=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGFyt8FolXBNPesE
+# IZD6ymxmtgrbMA0GCSqGSIb3DQEBAQUABIIBADQXPVLoW0fd36u0Hn+Dwrtv5P4K
+# CcI9RuEmQIou7V+NMM2p1vWCxwDpL5iy7Rg+yqYC8Nb2TY3QhAaCXa6pWnf0ncmA
+# 0KR2EQ0JA3FsiSEid93w3sK/YFEsXZw7RdvbR/C2euFjsIkfc0zcGGGYPXse5oz/
+# MDvz8eSlIz9UwA2135xQmIUP6RwIS8opV04goyGeosqEjZV+ZmwdCgW/WzaIsqSR
+# +DSLmEfhPWpnArALUVIj+ORiJfVk4RLuoG2udtf3Zy1OpzUTdOxD3KTZRGo2kbmm
+# tgn1CHkIpeE4qErw3qog4uwbc0UDWFqmdB5/dYCWTQ6Gp35k/Rn2FqoqVRU=
 # SIG # End signature block

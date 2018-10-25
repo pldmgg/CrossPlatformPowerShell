@@ -8,57 +8,79 @@ function Test-Port {
         [int]$Port = $(Read-Host -Prompt "Please enter the port number you would like to check.")
     )
 
-    Begin {
+    #region >> Helper Functions
 
-        ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
-        
-        try {
-            $HostNameNetworkInfo = Resolve-Host -HostNameOrIP $HostName -ErrorAction Stop
-        }
-        catch {
-            Write-Error "Unable to resolve $HostName! Halting!"
-            $global:FunctionResult = "1"
-            return
-        }
-
-        $tcp = New-Object Net.Sockets.TcpClient
-        $RemoteHostFQDN = $HostNameNetworkInfo.FQDN
-        
-        ##### END Variable/Parameter Transforms and PreRun Prep #####
-    }
-
-    ##### BEGIN Main Body #####
-    Process {
-        if ($pscmdlet.ShouldProcess("$RemoteHostFQDN","Test Connection on $RemoteHostFQDN`:$Port")) {
-            try {
-                $tcp.Connect($RemoteHostFQDN, $Port)
-            }
-            catch {}
-
-            if ($tcp.Connected) {
-                $tcp.Close()
-                $open = $true
+    function Get-Elevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
             }
             else {
-                $open = $false
+                return $false
             }
-
-            $PortTestResult = [pscustomobject]@{
-                Address = $RemoteHostFQDN
-                Port    = $Port
-                Open    = $open
-            }
-            $PortTestResult
         }
-        ##### END Main Body #####
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
     }
+
+    #endregion >> Helper Functions
+
+    #region >> Main
+
+    try {
+        $HostNameNetworkInfo = Resolve-Host -HostNameOrIP $HostName -ErrorAction Stop
+    }
+    catch {
+        Write-Error "Unable to resolve $HostName! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    $tcp = New-Object Net.Sockets.TcpClient
+    $RemoteHostFQDN = $HostNameNetworkInfo.FQDN
+    
+
+    try {
+        $tcp.Connect($RemoteHostFQDN, $Port)
+    }
+    catch {}
+
+    if ($tcp.Connected) {
+        $tcp.Close()
+        $open = $true
+    }
+    else {
+        $open = $false
+    }
+
+    $PortTestResult = [pscustomobject]@{
+        Address = $RemoteHostFQDN
+        Port    = $Port
+        Open    = $open
+    }
+    $PortTestResult
+
+    #endregion >> Main
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUivSRmRW+9K5k/TTz3OE927uK
-# IY6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUsRzWFvwouSD6YDS+HNQKHfBX
+# Mumgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -115,11 +137,11 @@ function Test-Port {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNnnaxIps9akZq0L
-# T3JFp/pSkn1uMA0GCSqGSIb3DQEBAQUABIIBAAt4LG/akpq6wjLq+jg66sWpfQRx
-# 4SjKj0WGWjlqeG4HrU80dhGFMRhjUVQvx9mWVyvX72gO84D3HHiKa4qFbBLrJNMe
-# BqRyfgVOBdboSmDofif6UcVXxDoaOBc70vP0qUC314UdMd9SkrMEB40esZOPBakg
-# /GsvW0VmrIc86lqnqGbtr4jzpg78oBRcrIKr8TvRdUgHdWeSn4b7PXLeCf12+rBy
-# cmolbQSeM/INcjQNh9nfT0HnnaOugyy1yZsX5UgzVWK2bjSowqcjgmpLWre3YHct
-# 8OEJLFqqJtadkyEtFAiFE2eWSjB8Z5u+vQ58NYRUku6+0yo7DCPalF8NuzI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLc6i/otOEZWaab5
+# 26YgDMd+UOCgMA0GCSqGSIb3DQEBAQUABIIBABZgE4HOFirp4QQ0WdIABMyRLBCL
+# JkrPOf/FbBXuTRlcF8tgVjm2HQx/E/FI3U6J8C+rzXRS0UPoPSAPBm48+Mj2yUFW
+# m7+G3ejsZdw6C5lh3COedGOKA2Zhc1uMSa4BhFoyOf49A4xy3tTSxjT4wAT4es5p
+# Dgvm9nAr1jqNBQuctq5k6bowFVoiuQr/NqPMsvJcSL17ErxnQEOc64hQWoHw3xaM
+# 3cGmjUf36ZubPftw2vg72rff1+j7VslZXt3rKhwXnpac089c8Wbjo3O0ZWTc3dbM
+# C3RP8W+yFYmvwMcxTwJlKharW2Qicmcv7i5hbXuQmkdCe8Kk8wEo80qTTek=
 # SIG # End signature block
