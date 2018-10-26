@@ -1133,6 +1133,7 @@ function Get-ComputerObjectsInLDAP {
             "host"
             "hostname"
             "ldapsearch"
+            #"expect"
         )
         if (!$Domain) {
             $null = $LinuxCommands.Add("domainname")
@@ -1171,6 +1172,16 @@ function Get-ComputerObjectsInLDAP {
                     $null = $FailedInstalls.Add("openldap-clients")
                 }
             }
+            <#
+            if ($CommandsNotPresent -contains "expect") {
+                try {
+                    $null = Install-LinuxPackage -PossiblePackageNames "expect" -CommandName "expect"
+                }
+                catch {
+                    $null = $FailedInstalls.Add("expect")
+                }
+            }
+            #>
     
             if ($FailedInstalls.Count -gt 0) {
                 Write-Error "The following Linux packages are required, but were not able to be installed:`n$($FailedInstalls -join "`n")`nHalting!"
@@ -1256,25 +1267,41 @@ function Get-ComputerObjectsInLDAP {
         }
         $DomainLDAPContainers = $($DomainLDAPContainersPrep | foreach {"DC=$_"}) -join ","
         $BindUserName = $LDAPCreds.UserName
+        $BindUserNameForExpect = $BindUserName -replace [regex]::Escape('\'),'\\\'
         $BindPassword = $LDAPCreds.GetNetworkCredential().Password
 
         $ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b $DomainLDAPContainers -s sub "(objectClass=computer)" cn
-        if ($LASTEXITCODE -ne 0) {
-            if ($LASTEXITCODE -eq 49) {
-                Write-Error "Invalid credentials. Please check them and try again. Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-            else {
-                Write-Error "Unable to read LDAP! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-        }
+        
+        <#
+        $ldapSearchCmdForExpect = "ldapsearch -x -h $PDC -D $BindUserNameForExpect -W -b `"$DomainLDAPContainers`" -s sub `"(objectClass=computer)`" cn"
 
-        $ComputerObjectsInLDAP = $($ldapSearchOutput -split "`n") -match "cn: "
+        [System.Collections.ArrayList]$ExpectScriptPrep = @(
+            'expect - << EOF'
+            'set timeout 120'
+            "set password $BindPassword"
+            'set prompt \"(>|:|#|\\\\\\$)\\\\s+\\$\"'
+            "spawn $ldapSearchCmdForExpect"
+            'match_max 100000'
+            'expect \"Enter LDAP Password:\"'
+            'send -- \"\$password\r\"'
+            'expect -re \"\$prompt\"'
+            'send -- \"exit\r\"'
+            'expect eof'
+            'EOF'
+        )
+
+        $ExpectScript = $ExpectScriptPrep -join "`n"
+
+        #Write-Host "`$ExpectScript is:`n$ExpectScript"
+        #$ExpectScript | Export-CliXml "$HOME/ExpectScript2.xml"
+        
+        # The below $ExpectOutput is an array of strings
+        $ExpectOutput = $ldapSearchOutput = bash -c "$ExpectScript"
+        #>
+
+        $Computers = $ldapSearchOutput -match "cn:" | foreach {$_ -replace 'cn:[\s]+'}
         if ($ObjectCount -gt 0) {
-            $ComputerObjectsInLDAP = $ComputerObjectsInLDAP[0..$($ObjectCount-1)]
+            $Computers = $Computers[0..$($ObjectCount-1)]
         }
     }
     else {
@@ -1291,10 +1318,10 @@ function Get-ComputerObjectsInLDAP {
             $LDAPSearcher.Filter = "(objectClass=computer)"
             $LDAPSearcher.SizeLimit = 0
             $LDAPSearcher.PageSize = 250
-            $ComputerObjectsInLDAP = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
+            $Computers = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
 
             if ($ObjectCount -gt 0) {
-                $ComputerObjectsInLDAP = $ComputerObjectsInLDAP[0..$($ObjectCount-1)]
+                $Computers = $Computers[0..$($ObjectCount-1)]
             }
         }
         catch {
@@ -1304,14 +1331,14 @@ function Get-ComputerObjectsInLDAP {
         }
     }
 
-    $ComputerObjectsInLDAP
+    $Computers
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUOVVKTbtC1P4pY+hTVGf6RCHE
-# FUKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUKYvA8AE+GDUrX4XUhJRj9YCX
+# oPegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1368,11 +1395,11 @@ function Get-ComputerObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNEwhgyfjbDSmas1
-# nHZkYO/JzZIJMA0GCSqGSIb3DQEBAQUABIIBAJP0sI+xYCzC1Qw0Rz9da2rE2YAB
-# HcpxTcv5Y/D0VK/vlEycP69BfpCSFq/VwujqeqnLNiMWt4AtiW2tmZ2V1xxk8fit
-# np09jkHmAueMwHw+tqs+2MiwTTk3AEoP2gfU4C8QEpo5nN6KjNxWtkCwWHyeN8q6
-# VTXJ0AnJY6szPyn/ms+A1KfYV6AZPj1eWtt1YQE3SzbZvuHK4Wxu2PUvTOtgfnNm
-# 34FvQPo++XqIfXdPAiJX5m3pXiW8I90RUwSuSQstkvZC+a1TgDTuRUd48kd2Cdqj
-# KIpTAyVdVUTNGSLoIE/RBySd10+T6Uwy6TkdQJbL8w/CIKj7cMSDYGEt48k=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHY4LQEBa1JRR53M
+# ZA64VC8ccsf0MA0GCSqGSIb3DQEBAQUABIIBALcqAALzpuLzvziNK4G70qaGXv4B
+# eWTLWsmkYc2dtYCjH6gkp096oMLvc0A48D3K0J7YcO+AQOfzj4WBvP10Hzh6F0/V
+# h/T/ifxo8zUb5wex/W4fcRTH4Z01r9csn4gEnCOUN8Bhnt9leNIBddG/cf5IrVmw
+# eJ7XX6P4ay6SnO3kDy3mmxxzldZQ7/E8jmMneE3vmrTeHCPY7WWmDmZOrg4QIQy9
+# FOUo1UAnNPqD7EL4j9+hSjj0YwCPkOyk7I9C2ICDS4WaQWae31mSuNyvDFAmNpcq
+# NObBCuiu1NgqQUAuwa/W6G23piMuMoEMirtYIMgV0a1VDwazA9mM16AA3b0=
 # SIG # End signature block

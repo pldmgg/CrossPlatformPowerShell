@@ -1133,6 +1133,7 @@ function Get-GroupObjectsInLDAP {
             "host"
             "hostname"
             "ldapsearch"
+            #"expect"
         )
         if (!$Domain) {
             $null = $LinuxCommands.Add("domainname")
@@ -1171,6 +1172,16 @@ function Get-GroupObjectsInLDAP {
                     $null = $FailedInstalls.Add("openldap-clients")
                 }
             }
+            <#
+            if ($CommandsNotPresent -contains "expect") {
+                try {
+                    $null = Install-LinuxPackage -PossiblePackageNames "expect" -CommandName "expect"
+                }
+                catch {
+                    $null = $FailedInstalls.Add("expect")
+                }
+            }
+            #>
     
             if ($FailedInstalls.Count -gt 0) {
                 Write-Error "The following Linux packages are required, but were not able to be installed:`n$($FailedInstalls -join "`n")`nHalting!"
@@ -1258,25 +1269,41 @@ function Get-GroupObjectsInLDAP {
         }
         $DomainLDAPContainers = $($DomainLDAPContainersPrep | foreach {"DC=$_"}) -join ","
         $BindUserName = $LDAPCreds.UserName
+        $BindUserNameForExpect = $BindUserName -replace [regex]::Escape('\'),'\\\'
         $BindPassword = $LDAPCreds.GetNetworkCredential().Password
 
         $ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b $DomainLDAPContainers -s sub "(objectClass=group)" cn
-        if ($LASTEXITCODE -ne 0) {
-            if ($LASTEXITCODE -eq 49) {
-                Write-Error "Invalid credentials. Please check them and try again. Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-            else {
-                Write-Error "Unable to read LDAP! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-        }
+        
+        <#
+        $ldapSearchCmdForExpect = "ldapsearch -x -h $PDC -D $BindUserNameForExpect -W -b `"$DomainLDAPContainers`" -s sub `"(objectClass=group)`" cn"
 
-        $GroupObjectsInLDAP = $($ldapSearchOutput -split "`n") -match "cn: "
+        [System.Collections.ArrayList]$ExpectScriptPrep = @(
+            'expect - << EOF'
+            'set timeout 120'
+            "set password $BindPassword"
+            'set prompt \"(>|:|#|\\\\\\$)\\\\s+\\$\"'
+            "spawn $ldapSearchCmdForExpect"
+            'match_max 100000'
+            'expect \"Enter LDAP Password:\"'
+            'send -- \"\$password\r\"'
+            'expect -re \"\$prompt\"'
+            'send -- \"exit\r\"'
+            'expect eof'
+            'EOF'
+        )
+
+        $ExpectScript = $ExpectScriptPrep -join "`n"
+
+        #Write-Host "`$ExpectScript is:`n$ExpectScript"
+        #$ExpectScript | Export-CliXml "$HOME/ExpectScript2.xml"
+        
+        # The below $ExpectOutput is an array of strings
+        $ExpectOutput = $ldapSearchOutput = bash -c "$ExpectScript"
+        #>
+
+        $Groups = $ldapSearchOutput -match "cn:" | foreach {$_ -replace 'cn:[\s]+'}
         if ($ObjectCount -gt 0) {
-            $GroupObjectsInLDAP = $GroupObjectsInLDAP[0..$($ObjectCount-1)]
+            $Groups = $Groups[0..$($ObjectCount-1)]
         }
     }
     else {
@@ -1293,10 +1320,10 @@ function Get-GroupObjectsInLDAP {
             $LDAPSearcher.Filter = "(&(objectCategory=Group))"
             $LDAPSearcher.SizeLimit = 0
             $LDAPSearcher.PageSize = 250
-            $GroupObjectsInLDAP = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
+            $Groups = $LDAPSearcher.FindAll() | foreach {$_.GetDirectoryEntry()}
 
             if ($ObjectCount -gt 0) {
-                $GroupObjectsInLDAP = $GroupObjectsInLDAP[0..$($ObjectCount-1)]
+                $Groups = $Groups[0..$($ObjectCount-1)]
             }
         }
         catch {
@@ -1306,7 +1333,7 @@ function Get-GroupObjectsInLDAP {
         }
     }
 
-    $GroupObjectsInLDAP
+    $Groups
 
     #endregion >> Main
 }
@@ -1314,8 +1341,8 @@ function Get-GroupObjectsInLDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUfJD0enkB7PXgyw0IwR91hhck
-# m6ygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJuyzGHJrGkyCv11+gSeo6x2e
+# iGygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1372,11 +1399,11 @@ function Get-GroupObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFM0nkOntJsbq/IpS
-# WHRi4tWOTGYNMA0GCSqGSIb3DQEBAQUABIIBAJWR3IQPmAyOIPOIF+SXYTTTagsj
-# LMfSRj2ipBWk75DLQra2bds7WhXfwX+S8qrrNduZgV1ignHud1TGTnENk7Nf2vVN
-# /OuAsmln8m1kfezja97qim75lYaHBG5uVCok/I7jQHYZh6bP2PJs2ViTXEc2PDgO
-# adyqJvHxbRyRpCBKLzR+e745dIPfey4jP7i/CZmrI3a3T0IHJl4LqaCRy6I9O7ty
-# HTYBC1nEjapVh3WFx9zh6fI3Zpr5+C3ZH2y5QASVRFOcbGe2kLsXz6Gb/ov8c3YX
-# zE1zsUStMoXxH9A4dumB6w7YRbpnu/kwtn+LIVYVAX43NbpQ4upcYgaOJIs=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJKD47LS2kmuBNjg
+# am8fHennySD0MA0GCSqGSIb3DQEBAQUABIIBAJm5egEmAczzo2copu/l+kAaBrAz
+# T6/wyaINSYYWmB8SPNovHCPPCq12b6rg9isFeNa8MRgVDNJwKWao923S87LRmL6O
+# 72W5e/HuGrDkgELQxGf0c1B7taSB47P3Jqg1U+KVbuDQm/u51xQzM5dZqfZcWyY0
+# pL3o9Ywevdq75CcveuUC1zrOGgzYsZwKLZk+r9F/hB58Ge6v6mLC8L+HKfClzn0w
+# hFjQ1p66MzP2ni/6E/n/yjrPdxgrhLpLyx1mA0bpgj40DZrSmoBKNU5W5tW1PEYW
+# Z04BiWu0/BH5DrJAiZ7YnDfCl0UXnQvROXX/8Hqk7fWlRQHgsKC02xKcpMI=
 # SIG # End signature block

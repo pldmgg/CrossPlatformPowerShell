@@ -1132,7 +1132,7 @@ function Get-LDAPGroupAndUsers {
             "host"
             "hostname"
             "ldapsearch"
-            "expect"
+            #"expect"
         )
         if (!$Domain) {
             $null = $LinuxCommands.Add("domainname")
@@ -1171,6 +1171,7 @@ function Get-LDAPGroupAndUsers {
                     $null = $FailedInstalls.Add("openldap-clients")
                 }
             }
+            <#
             if ($CommandsNotPresent -contains "expect") {
                 try {
                     $null = Install-LinuxPackage -PossiblePackageNames "expect" -CommandName "expect"
@@ -1179,6 +1180,7 @@ function Get-LDAPGroupAndUsers {
                     $null = $FailedInstalls.Add("expect")
                 }
             }
+            #>
     
             if ($FailedInstalls.Count -gt 0) {
                 Write-Error "The following Linux packages are required, but were not able to be installed:`n$($FailedInstalls -join "`n")`nHalting!"
@@ -1265,8 +1267,9 @@ function Get-LDAPGroupAndUsers {
         $BindUserNameForExpect = $BindUserName -replace [regex]::Escape('\'),'\\\'
         $BindPassword = $LDAPCreds.GetNetworkCredential().Password
 
-        #$ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b "$DomainLDAPContainers" -s sub "(&(objectClass=user)(!(objectClass=computer)))" memberOf
-        #$ldapSearchCmd = "ldapsearch -x -h $PDC -D $BindUserName -W -b `"$DomainLDAPContainers`" -s sub `"(&(objectClass=user)(!(objectClass=computer)))`" memberOf"
+        $ldapSearchOutput = ldapsearch -x -h $PDC -D $BindUserName -w $BindPassword -b "$DomainLDAPContainers" -s sub "(objectClass=group)" member
+        
+        <#
         $ldapSearchCmdForExpect = "ldapsearch -x -h $PDC -D $BindUserNameForExpect -W -b `"$DomainLDAPContainers`" -s sub `"(objectClass=group)`" member"
 
         [System.Collections.ArrayList]$ExpectScriptPrep = @(
@@ -1290,9 +1293,10 @@ function Get-LDAPGroupAndUsers {
         #$ExpectScript | Export-CliXml "$HOME/ExpectScript2.xml"
         
         # The below $ExpectOutput is an array of strings
-        $ExpectOutput = bash -c "$ExpectScript"
+        $ExpectOutput = $ldapSearchOutput = bash -c "$ExpectScript"
+        #>
 
-        $GroupAndUsersPrep = $ExpectOutput -match "dn:|member:"
+        $GroupAndUsersPrep = $ldapSearchOutput -match "dn:|member:"
         [System.Collections.ArrayList]$GroupAndUsersPrepSorted = @()
         foreach ($Line in $GroupAndUsersPrep) {
             if ($Line -match 'dn:') {
@@ -1307,7 +1311,7 @@ function Get-LDAPGroupAndUsers {
             }
         }
         if ($GroupAndUsersPrepSorted.Count -eq 0) {
-            Write-Error "Unable to parse output of 'ldapsearch'! Output is as follows:`n$ExpectOutput"
+            Write-Error "Unable to parse output of 'ldapsearch'! Output is as follows:`n$ldapSearchOutput"
             $global:FunctionResult = "1"
             return
         }
@@ -1328,6 +1332,10 @@ function Get-LDAPGroupAndUsers {
                 Group   = $Group
                 Users   = @($Users)
             }
+        }
+
+        if ($ObjectCount -gt 0) {
+            $GroupAndUsers = $GroupAndUsers[0..$($ObjectCount-1)]
         }
     }
     else {
@@ -1359,6 +1367,10 @@ function Get-LDAPGroupAndUsers {
                     Users   = @($Users)
                 }
             }
+
+            if ($ObjectCount -gt 0) {
+                $GroupAndUsers = $GroupAndUsers[0..$($ObjectCount-1)]
+            }
         }
         catch {
             Write-Error $_
@@ -1372,8 +1384,8 @@ function Get-LDAPGroupAndUsers {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUH2mwI+55+01E6f0O16QKuszc
-# P7Cgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU8sggdZklccZuYQZXMi+fW9rp
+# 352gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1430,11 +1442,11 @@ function Get-LDAPGroupAndUsers {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEVc4976xac6+fI0
-# VcP4ZKLOuoXXMA0GCSqGSIb3DQEBAQUABIIBAEmq7jLV9bF7h2Z2RRAQabPgTNyt
-# nXuBf2INS7uNH+KKgbrDH5oNKuR7u+DTvpUzl1zztrmVEjah0nVwvh567Kv2dKuF
-# eQWjD4qMY3+57X3GkwHHKXy4sQ0BP/iASTd8wFfAZw6TChBTiOUULnY2pCMZCan/
-# UMD1biAW7PPdeIvhXgSVurwqqdnRc/BhZ1M0cIDayduwfTnCyppMRqajCnD+6M7z
-# up/uBJnQXE8lSK2VxIRACW7CB/yW+ZXDjYq7jbW2l5wyp3LrA87UcJjjAKJ3eii7
-# zfog66TsWsjoaUe1tfEo+4Q8z/5UjnDY2ADJZEj9hrRFX58Ijd+0IOLjLoE=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPZtuCQcHuowjn6A
+# T7Sf7Tyn6vyAMA0GCSqGSIb3DQEBAQUABIIBAB04GYsnpwNLcsd9WSXxXHuYYiy7
+# hcCe2cC47GivnCCjvlMEIKaS6NGV2fT0JVDp70aITgfIYwxIejMgS7S/biyOvtKF
+# Tfr1WcXAyhLCZsqc34Ng4FiijkdtG4q2lu74e0jX4XAAPEKE1XZcG3owOTPR7Tmv
+# f4zEkw5cKmuIxN5VrmFIAsd2Rg1eb/LiLaESPNMNbeud5stP69PMCF44YpnQs9IX
+# BxIKCzwO4AS4QHcQ9qDik6MxE1MH4QS8nxDpzfatdnFfsBOXTjuBnkVt8v3BQPel
+# n41+YGaAXtLXcAxcuUd4Q//8gODyecphQMx/GtuBzikjgsZIzIvmWUCzLmI=
 # SIG # End signature block
