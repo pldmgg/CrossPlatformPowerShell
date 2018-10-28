@@ -219,35 +219,6 @@ function Test-LDAP {
             [switch]$Silent
         )
     
-        #region >> Helper Functions
-        
-        function Get-NativePath {
-            [CmdletBinding()]
-            Param( 
-                [Parameter(Mandatory=$True)]
-                [string[]]$PathAsStringArray
-            )
-        
-            $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
-                $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
-                
-                if ($SplitAttempt.Count -gt 1) {
-                    foreach ($obj in $SplitAttempt) {
-                        $obj
-                    }
-                }
-                else {
-                    $pathPart
-                }
-            }
-            $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
-        
-            $PathAsStringArray
-        
-        }
-        
-        #endregion >> Helper Functions
-    
         #region >> Prep
     
         if ($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT" -and !$NuGetPkgDownloadDirectory) {
@@ -538,6 +509,31 @@ function Test-LDAP {
     
     }
 
+    function Get-NativePath {
+        [CmdletBinding()]
+        Param( 
+            [Parameter(Mandatory=$True)]
+            [string[]]$PathAsStringArray
+        )
+    
+        $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+            $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+            
+            if ($SplitAttempt.Count -gt 1) {
+                foreach ($obj in $SplitAttempt) {
+                    $obj
+                }
+            }
+            else {
+                $pathPart
+            }
+        }
+        $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
+    
+        $PathAsStringArray
+    
+    }
+    
     #endregion >> Helper Functions
 
     #region >> Prep
@@ -549,11 +545,25 @@ function Test-LDAP {
             if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                 $NovellDownloadDir = "$HOME/Novell.Directory.Ldap.NETStandard"
                 if (Test-Path $NovellDownloadDir) {
-                    $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
-                }
+                    $AssemblyToLoadPath = Get-NativePath @(
+                        $HOME
+                        "Novell.Directory.Ldap.NETStandard"
+                        "Novell.Directory.Ldap.NETStandard"
+                        "lib"
+                        "netstandard1.3"
+                        "Novell.Directory.Ldap.NETStandard.dll"
+                    )
 
-                $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
-                $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                    if (!$(Test-Path $AssemblyToLoadPath)) {
+                        $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
+                        $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                        $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                    }
+                }
+                else {
+                    $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                    $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                }
 
                 if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                     $null = Add-Type -Path $AssemblyToLoadPath
@@ -725,8 +735,8 @@ function Test-LDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUljgn3lpLgvvHrkZd6YUhhJO+
-# tQWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUlD4ixcWuP7OHTKz2hp51B3jo
+# xQGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -783,11 +793,11 @@ function Test-LDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDRYCyjU0wD+QBFE
-# jOpn4z6KHVIUMA0GCSqGSIb3DQEBAQUABIIBAIx4ul2NcJgNDdFyGR7CsIxmIHKn
-# j0TZPP8WBtyQrFd8UIH/zOzLFahJ5N/0KkICBSpRddKDAB6YlfEmBUTO/XQmGd8R
-# XYYMlpxaXSBmC3IObbYUTBZB3Vp1FNPRaV2I58aHKgt8dEPhBfyg9EnTTUkAtwnU
-# OtYIjF8mAs4vP4pxYTc9HMSMMhVCeV454oQnNtnAxhUYb284yo3zhHZCmydwpNaW
-# Dy5+dAd9Hhp8m4htbCy213KpEc7GZO7abYOAHZFdxYt+D3FcFGw1BbzIeE9t2lH7
-# BSGsV3VNmPUBp6lXyxzjKeMTPdZY+ZICAr0Q3avlD/SF/7GguY+ilF0h6Xk=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFB/65wFHoOHvA7HJ
+# 8v4v6m2sOykEMA0GCSqGSIb3DQEBAQUABIIBAI1InNSoU1NTILnb0fbeFOj2/qtN
+# O/AKks87FAcMCckRBt5+ac1osmqCs+mW1qRwIrXurYbQneDprOoGNAtowsrTR2rJ
+# 799H/fQJrplsvtLDG+/xbCS2+XhlF8W1jQqMsuWYZmxTe3pPPAxXA9K1haPqEH/T
+# PWksPDr6ytp/a/5q/rAwRFP8BOQ2vaqtkwiM5ALzMTRwrEXTc7+6r9zHaPrEJ1rD
+# /7HHlBrqX6xmheP6eqpfr7O2FYHy/8ZYc8etQEOKr/3JssqncGXZuA6rBvHFg+ia
+# nvhGjZQk3uIfbe6/Bxy60q8v4Y2KlrND9exi49ZCqvWi1L+csNbJmuKhWsw=
 # SIG # End signature block

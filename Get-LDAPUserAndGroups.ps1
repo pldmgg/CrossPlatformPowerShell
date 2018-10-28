@@ -268,36 +268,7 @@ function Get-LDAPUserAndGroups {
             [Parameter(Mandatory=$False)]
             [switch]$Silent
         )
-    
-        #region >> Helper Functions
         
-        function Get-NativePath {
-            [CmdletBinding()]
-            Param( 
-                [Parameter(Mandatory=$True)]
-                [string[]]$PathAsStringArray
-            )
-        
-            $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
-                $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
-                
-                if ($SplitAttempt.Count -gt 1) {
-                    foreach ($obj in $SplitAttempt) {
-                        $obj
-                    }
-                }
-                else {
-                    $pathPart
-                }
-            }
-            $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
-        
-            $PathAsStringArray
-        
-        }
-        
-        #endregion >> Helper Functions
-    
         #region >> Prep
     
         if ($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT" -and !$NuGetPkgDownloadDirectory) {
@@ -933,11 +904,25 @@ function Get-LDAPUserAndGroups {
                 if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                     $NovellDownloadDir = "$HOME/Novell.Directory.Ldap.NETStandard"
                     if (Test-Path $NovellDownloadDir) {
-                        $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
-                    }
+                        $AssemblyToLoadPath = Get-NativePath @(
+                            $HOME
+                            "Novell.Directory.Ldap.NETStandard"
+                            "Novell.Directory.Ldap.NETStandard"
+                            "lib"
+                            "netstandard1.3"
+                            "Novell.Directory.Ldap.NETStandard.dll"
+                        )
     
-                    $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
-                    $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                        if (!$(Test-Path $AssemblyToLoadPath)) {
+                            $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
+                            $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                            $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                        }
+                    }
+                    else {
+                        $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                        $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                    }
     
                     if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                         $null = Add-Type -Path $AssemblyToLoadPath
@@ -1104,6 +1089,31 @@ function Get-LDAPUserAndGroups {
         }
     
         #endregion >> Main
+    }
+    
+    function Get-NativePath {
+        [CmdletBinding()]
+        Param( 
+            [Parameter(Mandatory=$True)]
+            [string[]]$PathAsStringArray
+        )
+    
+        $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+            $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+            
+            if ($SplitAttempt.Count -gt 1) {
+                foreach ($obj in $SplitAttempt) {
+                    $obj
+                }
+            }
+            else {
+                $pathPart
+            }
+        }
+        $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
+    
+        $PathAsStringArray
+    
     }
     
     #endregion >> Helper Functions
@@ -1385,8 +1395,8 @@ function Get-LDAPUserAndGroups {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUnD7Rf50Ie/y08j9fLqQiTh3G
-# uiSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUgVjj87c9KkBUtrPILJQ4JNJR
+# sEugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1443,11 +1453,11 @@ function Get-LDAPUserAndGroups {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFM9sKXdeHaVkYakT
-# Jq825SNhKKv6MA0GCSqGSIb3DQEBAQUABIIBAFJT+6q50EPSh8D1SrHhSdQvaAQh
-# PbFN34fBwzV8OS07ZtlgKGQa10Irdt8ueLl6Zn7Gfu/swA0sUzO7CY+UYsOKRiss
-# WMQQVkVi2oPY11a4GyztCxvBfo5XIi9Qg5Fm99qNYIlNyb7mg4YdVI8aTh36GjRv
-# Rs8xOilatKb2L9z53VrxMbmYSp0xXzo/ocTlFMBYH0WA8IbRTrARbLl9fEmDXGFo
-# 0joYdpmvMnmS43DFo5Cbt5JBNq2drPcOWBj8o3+uCqWmsznAe8rnUdERHg+Q2Z+Z
-# hsbp729KCAUFKolmU9xKh90uNXVATz4gBl0ksPn4NokPgp0z/6bJ7IJKvWA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNXFUAfOib5xulCs
+# f+1kEJeE25TaMA0GCSqGSIb3DQEBAQUABIIBAGC7F/cd6EISy450BvMAfXyaL4gU
+# qirmxJa4s3VdOxmbwE9bKR571PFOKUWqfZsIM8icsFKmGrrQwpE67EsPUwNoy6TU
+# F1DchNLfwDSehkTQNgS7ol6P4aSbLuF8xBlZJekaArC2vhzi6jDaxQt9o/v9lA+X
+# +YZ/kEIqgTA1PtFXlXZJjTuEb1iylRobDS4JoTOszVq2vbmCn9jQfFrMDokCRaVk
+# UrK1wIoiLkwhyxYGJapnMjwg8jJBLOBc237ZdU4tz2m5/D1qkO/DvtqewtYORlGG
+# H0rMhxdpRlcc5rCLyXhZ1V8j2uSqUM6c8xfFvvx+MhVtQSc7urrtVjDCCEw=
 # SIG # End signature block

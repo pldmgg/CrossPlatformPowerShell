@@ -268,36 +268,7 @@ function Get-GroupObjectsInLDAP {
             [Parameter(Mandatory=$False)]
             [switch]$Silent
         )
-    
-        #region >> Helper Functions
         
-        function Get-NativePath {
-            [CmdletBinding()]
-            Param( 
-                [Parameter(Mandatory=$True)]
-                [string[]]$PathAsStringArray
-            )
-        
-            $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
-                $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
-                
-                if ($SplitAttempt.Count -gt 1) {
-                    foreach ($obj in $SplitAttempt) {
-                        $obj
-                    }
-                }
-                else {
-                    $pathPart
-                }
-            }
-            $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
-        
-            $PathAsStringArray
-        
-        }
-        
-        #endregion >> Helper Functions
-    
         #region >> Prep
     
         if ($PSVersionTable.Platform -ne $null -and $PSVersionTable.Platform -ne "Win32NT" -and !$NuGetPkgDownloadDirectory) {
@@ -933,11 +904,25 @@ function Get-GroupObjectsInLDAP {
                 if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                     $NovellDownloadDir = "$HOME/Novell.Directory.Ldap.NETStandard"
                     if (Test-Path $NovellDownloadDir) {
-                        $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
-                    }
+                        $AssemblyToLoadPath = Get-NativePath @(
+                            $HOME
+                            "Novell.Directory.Ldap.NETStandard"
+                            "Novell.Directory.Ldap.NETStandard"
+                            "lib"
+                            "netstandard1.3"
+                            "Novell.Directory.Ldap.NETStandard.dll"
+                        )
     
-                    $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
-                    $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                        if (!$(Test-Path $AssemblyToLoadPath)) {
+                            $null = Remove-Item -Path $NovellDownloadDir -Recurse -Force
+                            $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                            $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                        }
+                    }
+                    else {
+                        $NovellPackageInfo = Download-NuGetPackage -AssemblyName "Novell.Directory.Ldap.NETStandard" -NuGetPkgDownloadDirectory $NovellDownloadDir -Silent
+                        $AssemblyToLoadPath = $NovellPackageInfo.AssemblyToLoad
+                    }
     
                     if (![bool]$($CurrentlyLoadedAssemblies -match [regex]::Escape("Novell.Directory.Ldap.NETStandard"))) {
                         $null = Add-Type -Path $AssemblyToLoadPath
@@ -1104,6 +1089,31 @@ function Get-GroupObjectsInLDAP {
         }
     
         #endregion >> Main
+    }
+    
+    function Get-NativePath {
+        [CmdletBinding()]
+        Param( 
+            [Parameter(Mandatory=$True)]
+            [string[]]$PathAsStringArray
+        )
+    
+        $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+            $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+            
+            if ($SplitAttempt.Count -gt 1) {
+                foreach ($obj in $SplitAttempt) {
+                    $obj
+                }
+            }
+            else {
+                $pathPart
+            }
+        }
+        $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
+    
+        $PathAsStringArray
+    
     }
     
     #endregion >> Helper Functions
@@ -1341,8 +1351,8 @@ function Get-GroupObjectsInLDAP {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJuyzGHJrGkyCv11+gSeo6x2e
-# iGygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUhyQVf6Thkd6Z6JRlFamI2kV9
+# UGKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1399,11 +1409,11 @@ function Get-GroupObjectsInLDAP {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJKD47LS2kmuBNjg
-# am8fHennySD0MA0GCSqGSIb3DQEBAQUABIIBAJm5egEmAczzo2copu/l+kAaBrAz
-# T6/wyaINSYYWmB8SPNovHCPPCq12b6rg9isFeNa8MRgVDNJwKWao923S87LRmL6O
-# 72W5e/HuGrDkgELQxGf0c1B7taSB47P3Jqg1U+KVbuDQm/u51xQzM5dZqfZcWyY0
-# pL3o9Ywevdq75CcveuUC1zrOGgzYsZwKLZk+r9F/hB58Ge6v6mLC8L+HKfClzn0w
-# hFjQ1p66MzP2ni/6E/n/yjrPdxgrhLpLyx1mA0bpgj40DZrSmoBKNU5W5tW1PEYW
-# Z04BiWu0/BH5DrJAiZ7YnDfCl0UXnQvROXX/8Hqk7fWlRQHgsKC02xKcpMI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJJBCbAlqwwPdGfa
+# 0Xu897HzrQc/MA0GCSqGSIb3DQEBAQUABIIBAGLA1hgUAtSuv+2QdVnIfKHeKRQk
+# hJgdww1+En9AgAaF5jYpDd8VqC5jeHnfdAe/zUeunCgVkKyFYyPvxa92FIvVbYnl
+# NepIWG7thZNhLSxVdgCIfdpZ4TfCopFf0Kk00RQiDDScJSvVZoZyyIjTFD/EXC2k
+# BGWJM2MmHB4+tr9d0lLX4eXZMj63jSXPPUCThXY/vI+zThqpJIkPTI+148R1GQbu
+# H/KV5U8h7gf/zjwAvOc/qJmDBJzei1DBOb3hJvrQqnxT8tEVKrMsBkegz/vYdGSn
+# ffFVGJrUuvehXBNAQA3hgx6OFQXsM1mYwgPIaQm/K6lqBP26EOL0ZUtQ+sM=
 # SIG # End signature block
